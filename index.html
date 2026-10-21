@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es-AR" data-tema="minimal">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ganga Store | Luxury clothing</title>
+  <meta name="description" content="Ganga Store: indumentaria de lujo en Argentina. Remeras, chombas, pantalones, camperas y buzos. Consultá por WhatsApp.">
+  <meta name="theme-color" content="#ffffff">
+  <meta property="og:title" content="Ganga Store | Luxury clothing">
+  <meta property="og:description" content="Indumentaria de lujo. Mirá las promos del mes y consultanos por WhatsApp.">
+  <meta property="og:image" content="img/marca/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="img/marca/favicon.png">
+  <link rel="apple-touch-icon" href="img/marca/apple-touch-icon.png">
+  <link rel="preload" href="fuentes/bodoni-moda-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/fuentes.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/tienda.css">
+  <link rel="stylesheet" href="css/temas.css">
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+
+  <a class="cinta" id="cinta" hidden></a>
+
+  <header class="cab">
+    <div class="cab-in">
+      <button class="cab-boton" id="abrirMenu" type="button" aria-label="Ver categorías" aria-expanded="false" aria-controls="cajon"></button>
+      <a class="marca" href="#/" aria-label="Ganga Store, ir al inicio">
+        <img src="img/marca/corona.png" alt="" width="311" height="203">
+        <span class="marca-nombre">GANGA STORE</span>
+      </a>
+      <a class="cab-boton" id="cabWhatsapp" href="#/contacto" aria-label="Escribinos por WhatsApp"></a>
+    </div>
+  </header>
+  <div class="tema-guirnalda" aria-hidden="true"></div>
+
+  <div class="velo" id="velo"></div>
+  <nav class="cajon" id="cajon" aria-label="Categorías" aria-hidden="true">
+    <div class="cajon-cab">
+      <h2>Categorías</h2>
+      <button class="cab-boton" id="cerrarMenu" type="button" aria-label="Cerrar"></button>
+    </div>
+    <div class="cajon-cuerpo" id="cajonCuerpo"></div>
+    <div class="cajon-pie" id="cajonPie"></div>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <div class="cargando"><img src="img/marca/corona.png" alt="Cargando la tienda"></div>
+  </main>
+
+  <footer class="pie" id="pie"></footer>
+  <div class="toast-zona" id="toasts" aria-live="polite"></div>
+
+  <script src="js/core.js"></script>
+  <script src="js/temas.js"></script>
+  <script src="js/visitas.js"></script>
+  <script src="js/tienda.js"></script>
+</body>
+</html>

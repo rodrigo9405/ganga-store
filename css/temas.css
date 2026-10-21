@@ -1,0 +1,92 @@
+/* Ganga Store — diseños de temporada (se activan con <html data-tema="...">) */
+
+/* Navidad: verde inglés, rojo y dorado. Es verano en Argentina: luces y adornos, sin nieve. */
+[data-tema="navidad"] {
+  --accent: #1f4a33; --hero-bg: #173826; --hero-gold: #e0bd6a; --hero-ink-2: #cdd8cc;
+  --cinta-bg: #9e1b22; --cinta-ink: #fbeed0; --gold-soft: #f6efdc;
+}
+[data-tema="navidad"] .cab { border-bottom-color: #9e1b22; }
+
+/* Año Nuevo: negro profundo y dorado brillante */
+[data-tema="anonuevo"] {
+  --hero-bg: #050505; --hero-gold: #e6c56f; --cinta-bg: #050505; --cinta-ink: #e6c56f;
+}
+
+/* Halloween: modo oscuro con naranja calabaza y violeta */
+[data-tema="halloween"] {
+  color-scheme: dark;
+  --paper: #16110f; --paper-2: #221b18; --paper-3: #2b2320;
+  --ink: #f4ece2; --ink-2: #c9bcad; --ink-3: #9a8d7f;
+  --line: #3a2f2a; --line-2: #54463e;
+  --gold: #e8761b; --gold-ink: #f0a35e; --gold-soft: #2e2016;
+  --accent: #e8761b; --on-accent: #16110f;
+  --hero-bg: #0e0a09; --hero-gold: #f08a2c; --hero-ink-2: #c9bcad;
+  --cinta-bg: #5b2a86; --cinta-ink: #fff1e2;
+}
+[data-tema="halloween"] .marca img, [data-tema="halloween"] .pie-marca img { filter: drop-shadow(0 0 10px rgba(232,118,27,.35)); }
+[data-tema="halloween"] .badge { background: #e8761b; color: #16110f; }
+[data-tema="halloween"] .tema-guirnalda { color: #f4ece2; }
+[data-tema="halloween"] .velo { background: rgba(0,0,0,.6); }
+
+/* Fechas patrias: celeste y blanco con el Sol de Mayo */
+[data-tema="patrio"] {
+  --accent: #1d4f80; --hero-bg: #12365c; --hero-gold: #f0c64a; --hero-ink-2: #d4e3f2;
+  --cinta-bg: #75aadb; --cinta-ink: #0d2a47; --gold-soft: #eaf2fa;
+}
+[data-tema="patrio"] .cab { border-bottom-color: #75aadb; }
+
+/* Día de la Madre: rosa empolvado y dorado */
+[data-tema="madre"] {
+  --accent: #8e3a4c; --paper-2: #fbf4f2; --gold-soft: #f9e8e7;
+  --hero-bg: #5d2836; --hero-gold: #f1c7a8; --hero-ink-2: #f0d9d9;
+  --cinta-bg: #f4dcdc; --cinta-ink: #5d2836;
+}
+/* Día del Padre: azul marino y camel */
+[data-tema="padre"] {
+  --accent: #1f3354; --hero-bg: #1f3354; --hero-gold: #d9b878; --hero-ink-2: #cdd5e2;
+  --cinta-bg: #1f3354; --cinta-ink: #ecdcb3;
+}
+/* Día del Amigo: verde azulado */
+[data-tema="amigo"] {
+  --accent: #1f6c65; --hero-bg: #174f4a; --hero-gold: #f0cf7c; --hero-ink-2: #cfe3df;
+  --cinta-bg: #1f6c65; --cinta-ink: #f6ecd2;
+}
+/* Día de las Infancias: colores primarios suaves */
+[data-tema="ninez"] {
+  --accent: #c8433a; --hero-bg: #24346b; --hero-gold: #ffd166; --hero-ink-2: #d9def2;
+  --cinta-bg: #ffd166; --cinta-ink: #24346b;
+}
+/* Primavera: verdes frescos y flores */
+[data-tema="primavera"] {
+  --accent: #3f6a2a; --paper-2: #f5f7ef; --gold-soft: #eef4e2;
+  --hero-bg: #2f4f22; --hero-gold: #f4d77c; --hero-ink-2: #dbe7cc;
+  --cinta-bg: #e6efd5; --cinta-ink: #2f4f22;
+}
+/* Pascuas: lavanda */
+[data-tema="pascuas"] {
+  --accent: #5e4a86; --paper-2: #f7f4fa; --hero-bg: #43356a; --hero-gold: #f2d38a; --hero-ink-2: #ddd4ee;
+  --cinta-bg: #ece4f6; --cinta-ink: #43356a;
+}
+/* Carnaval: fucsia y confeti */
+[data-tema="carnaval"] {
+  --accent: #b32a5d; --hero-bg: #2a1b4d; --hero-gold: #ffc94a; --hero-ink-2: #e1d7f2;
+  --cinta-bg: #b32a5d; --cinta-ink: #fff3d9;
+}
+/* San Valentín: rojo profundo */
+[data-tema="sanvalentin"] {
+  --accent: #96202f; --hero-bg: #5a1320; --hero-gold: #f3c1b5; --hero-ink-2: #f1d6d6;
+  --cinta-bg: #96202f; --cinta-ink: #fde9e4;
+}
+
+/* ---------- animaciones de las decoraciones (suaves; se apagan con movimiento reducido) ---------- */
+.tw { animation: titilar 2.4s ease-in-out infinite; }
+@keyframes titilar { 50% { opacity: .35; } }
+.bnd { transform-box: fill-box; transform-origin: top center; animation: banderin 3.2s ease-in-out infinite; }
+@keyframes banderin { 50% { transform: rotate(4deg); } }
+.bat { animation: murcielago 5s ease-in-out infinite; }
+@keyframes murcielago { 50% { transform: translate(0, -8px); } }
+.globo { animation: globo 4s ease-in-out infinite; }
+@keyframes globo { 50% { transform: translateY(-6px); } }
+.fw { animation: fuego 2.8s ease-out infinite; transform-box: view-box; }
+@keyframes fuego { 0% { opacity: 0; } 20% { opacity: 1; } 70% { opacity: .9; } 100% { opacity: 0; } }
+[data-tema="halloween"] .sw::before, [data-tema="halloween"] .punto-color { box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); }
