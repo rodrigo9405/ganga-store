@@ -34,7 +34,9 @@
   const firma = (d) => JSON.stringify(Object.assign({}, d, { rev: '', updatedAt: '', updatedBy: '' }));
   async function cargarDatos() {
     let pub = await GS.cargarPublicado();
-    // Recién publicado: GitHub Pages puede tardar en servir la versión nueva
+    const cuentas = await GS.cargarCuentas();
+    if (cuentas) pub.accounts = cuentas;
+    // Recién publicado: el hosting puede tardar en servir la versión nueva
     const reciente = await GS.idb.get('publicadoLocal');
     if (reciente && reciente.data) {
       if (reciente.data.rev === pub.rev || Date.now() - reciente.at > 15 * 60000) await GS.idb.del('publicadoLocal');
@@ -358,13 +360,13 @@
         await GS.idb.del('borrador');
         A.sucio = false; A.conflicto = false;
         pintarEstadoPub();
-        msg.innerHTML = `<div class="aviso">${icon('check')}<div><b>Publicado.</b><span id="pubOnline">GitHub Pages está actualizando la tienda. Suele tardar uno o dos minutos.</span></div></div>`;
+        msg.innerHTML = `<div class="aviso">${icon('check')}<div><b>Publicado.</b><span id="pubOnline">La tienda se está actualizando. Suele tardar uno o dos minutos.</span></div></div>`;
         btn.remove();
         msg.scrollIntoView({ block: 'nearest' });
         $('#pubPrev', d).outerHTML = '<button class="btn" type="button" data-cerrar>Listo</button>';
         GS.github.esperarOnline(r.data.rev, (ok) => {
           const el = document.getElementById('pubOnline');
-          if (el) el.textContent = ok ? 'La tienda ya muestra los cambios.' : 'GitHub todavía está procesando. Revisá la tienda en unos minutos.';
+          if (el) el.textContent = ok ? 'La tienda ya muestra los cambios.' : 'La actualización está tardando más de lo normal. Revisá la tienda en unos minutos.';
           if (ok) { GS.idb.del('publicadoLocal'); A.toast('La tienda ya muestra los cambios publicados.'); }
         });
         rutear();
@@ -379,7 +381,10 @@
   /* ---------- arranque ---------- */
   async function iniciar() {
     document.documentElement.setAttribute('data-tema', 'minimal');
-    try { await cargarDatos(); } catch (e) {
+    try {
+      await cargarDatos();
+      if (GS.irADominioPropio(A.pub.settings)) return;
+    } catch (e) {
       document.body.innerHTML = `<main class="login"><div class="login-caja"><div class="aviso peligro">${icon('alert')}<div><b>No se pudieron cargar los datos de la tienda.</b><span>${esc(e.message)}</span></div></div><button class="btn" onclick="location.reload()">Reintentar</button></div></main>`;
       return;
     }

@@ -22,6 +22,7 @@
       }
       if (!data) data = await GS.cargarPublicado();
       GS.normalizar(data);
+      if (!preview && GS.irADominioPropio(data.settings)) return;
     } catch (e) {
       main.innerHTML = `<div class="envoltura vacio"><h2>No pudimos cargar la tienda</h2><p>${esc(e.message)}</p><button class="btn" onclick="location.reload()">Volver a intentar</button></div>`;
       return;

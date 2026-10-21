@@ -1,0 +1,11 @@
+# Encabezados para Cloudflare (Pages / Workers con archivos estáticos)
+/admin*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  X-Frame-Options: DENY
+/data/*
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

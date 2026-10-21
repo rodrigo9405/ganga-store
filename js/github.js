@@ -1,19 +1,22 @@
 /* Ganga Store — publicación en GitHub.
-   El repositorio funciona como "base de datos": al publicar se crea un commit con
-   data/store.js y las fotos nuevas en img/subidas/. GitHub Pages actualiza la tienda
-   en uno o dos minutos. El token se guarda solo en este navegador, nunca en el repositorio. */
+   El repositorio (privado) funciona como "base de datos": al publicar se crea un commit con
+   data/store.js, data/cuentas.js y las fotos nuevas en img/subidas/. El hosting conectado al
+   repositorio (Cloudflare o GitHub Pages) actualiza la tienda en uno o dos minutos.
+   El token se guarda solo en este navegador, nunca en el repositorio. */
 (function () {
   'use strict';
   const GS = (window.GS = window.GS || {});
   const API = 'https://api.github.com';
   const CLAVE = 'gs_github';
+  // Repositorio de la tienda (es privado: conocer el nombre no da acceso)
+  const PREDETERMINADO = { owner: 'rodrigo9405', repo: 'ganga-store' };
 
   const G = (GS.github = {});
 
   G.config = () => {
     const c = GS.ls.get(CLAVE, {}) || {};
     const auto = G.detectar();
-    return { owner: c.owner || auto.owner || '', repo: c.repo || auto.repo || '', branch: c.branch || 'main', token: c.token || '' };
+    return { owner: c.owner || auto.owner || PREDETERMINADO.owner, repo: c.repo || auto.repo || PREDETERMINADO.repo, branch: c.branch || 'main', token: c.token || '' };
   };
   G.guardarConfig = (c) => GS.ls.set(CLAVE, { owner: (c.owner || '').trim(), repo: (c.repo || '').trim(), branch: (c.branch || 'main').trim(), token: (c.token || '').trim() });
   G.configurado = () => { const c = G.config(); return !!(c.owner && c.repo && c.token); };
@@ -25,8 +28,11 @@
     const repo = seg && !/\.html?$/.test(seg) ? seg : `${m[1]}.github.io`;
     return { owner: m[1], repo };
   };
-  G.urlTienda = () => {
+  G.urlTienda = (settings) => {
+    const dom = String((settings && settings.domain) || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (dom) return 'https://' + dom + '/';
     const c = G.config();
+    if (!G.detectar().owner) return '';
     if (!c.owner) return '';
     return c.repo.toLowerCase() === `${c.owner.toLowerCase()}.github.io` ? `https://${c.owner}.github.io/` : `https://${c.owner}.github.io/${c.repo}/`;
   };
@@ -93,8 +99,14 @@
   };
   G.contarFotosNuevas = (data) => { let n = 0; G.recorrerImagenes(GS.clone(data), (src) => { if (ES_DATA.test(src)) n++; return src; }); return n; };
 
-  G.contenidoStore = (data) => '/* Datos publicados de Ganga Store. Este archivo lo actualiza el panel de administración al presionar "Publicar". */\n'
-    + 'window.GANGA_STORE = ' + JSON.stringify(data, null, 1) + ';\n';
+  G.contenidoStore = (data) => {
+    const sinCuentas = Object.assign({}, data);
+    delete sinCuentas.accounts;
+    return '/* Datos publicados de Ganga Store. Este archivo lo actualiza el panel de administración al presionar "Publicar". */\n'
+      + 'window.GANGA_STORE = ' + JSON.stringify(sinCuentas, null, 1) + ';\n';
+  };
+  G.contenidoCuentas = (data) => '/* Cuentas del panel de Ganga Store (contraseñas con hash PBKDF2). La tienda no carga este archivo. */\n'
+    + 'window.GANGA_CUENTAS = ' + JSON.stringify({ rev: data.rev, accounts: data.accounts || [] }, null, 1) + ';\n';
 
   /**
    * Publica `data`. `anterior` es la versión publicada (para borrar fotos que ya no se usan).
@@ -133,6 +145,7 @@
     // 2. datos
     avisar('datos');
     arbol.push({ path: 'data/store.js', mode: '100644', type: 'blob', content: G.contenidoStore(data) });
+    arbol.push({ path: 'data/cuentas.js', mode: '100644', type: 'blob', content: G.contenidoCuentas(data) });
 
     // 3. fotos que ya no usa ningún producto
     const antes = anterior ? subidasDe(anterior) : new Set();

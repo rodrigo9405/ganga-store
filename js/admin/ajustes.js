@@ -31,6 +31,7 @@
             <label class="campo"><span>TikTok</span><input name="tiktok" value="${esc(s.tiktok)}" autocapitalize="none" placeholder="@usuario o enlace"></label>
             <label class="campo"><span>Email</span><input name="email" type="email" value="${esc(s.email)}" autocapitalize="none" placeholder="hola@tutienda.com"></label>
             <label class="campo"><span>Dirección del local</span><input name="address" value="${esc(s.address)}" placeholder="Calle 123, CABA"></label>
+            <label class="campo"><span>Dominio propio</span><input name="domain" value="${esc(s.domain || '')}" autocapitalize="none" spellcheck="false" placeholder="www.gangastore.com"><small>Cuando lo tengas andando, quien entre por la dirección técnica del hosting pasa a este dominio.</small></label>
             <label class="campo"><span>Enlace de Google Maps</span><input name="mapsUrl" value="${esc(s.mapsUrl)}" type="url" placeholder="https://maps.app.goo.gl/…"><small>Opcional. Si lo dejás vacío, se busca la dirección.</small></label>
           </div>
           <div><button class="btn" type="submit">${icon('check')} Guardar datos</button></div>
@@ -57,7 +58,7 @@
         </div>
       </section>
 
-      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Publicación en GitHub</h2><p>La tienda vive en tu repositorio de GitHub. Al publicar, el panel sube ahí los cambios con un token que se guarda solo en este dispositivo.</p></div>
+      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Publicación</h2><p>Productos, fotos y ajustes se guardan en tu repositorio privado de GitHub. Al publicar, el panel sube ahí los cambios con un token que se guarda solo en este dispositivo, y la tienda se actualiza sola.</p></div>
         <form class="form" id="fGh" novalidate autocomplete="off">
           <div class="form-grid tres">
             <label class="campo"><span>Usuario de GitHub</span><input name="owner" value="${esc(gh.owner)}" autocapitalize="none" spellcheck="false" placeholder="rodrigo9405"></label>
@@ -76,7 +77,7 @@
             </ol></details>
           <p id="ghMsg" role="status"></p>
           <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">${icon('check')} Guardar y probar conexión</button>${gh.token ? '<button class="btn btn-suave" type="button" id="ghBorrar">Quitar token de este dispositivo</button>' : ''}</div>
-          ${GS.github.urlTienda() ? `<p class="ayuda">Dirección pública de la tienda: <a href="${esc(GS.github.urlTienda())}" target="_blank" rel="noopener">${esc(GS.github.urlTienda())}</a></p>` : ''}
+          ${GS.github.urlTienda(s) ? `<p class="ayuda">Dirección pública de la tienda: <a href="${esc(GS.github.urlTienda(s))}" target="_blank" rel="noopener">${esc(GS.github.urlTienda(s))}</a></p>` : ''}
         </form>
       </section>
 

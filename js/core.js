@@ -240,6 +240,23 @@
     if (!window.GANGA_STORE) throw new Error('Los datos de la tienda están vacíos o dañados.');
     return GS.clone(window.GANGA_STORE);
   };
+  /* Las cuentas del equipo van en un archivo aparte que la tienda nunca descarga
+     (en Cloudflare se puede proteger con Access junto con el panel). */
+  GS.cargarCuentas = async () => {
+    delete window.GANGA_CUENTAS;
+    try { await GS.cargarScript('data/cuentas.js?v=' + Date.now()); } catch (e) { return null; }
+    return window.GANGA_CUENTAS && Array.isArray(window.GANGA_CUENTAS.accounts) ? GS.clone(window.GANGA_CUENTAS.accounts) : null;
+  };
+  /* Si la tienda tiene dominio propio, quien entre por la dirección técnica
+     (pages.dev, workers.dev o github.io) pasa al dominio de la marca. */
+  GS.irADominioPropio = (settings) => {
+    const dom = String((settings && settings.domain) || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+    if (!dom || location.hostname === dom) return false;
+    if (!/\.(pages|workers)\.dev$|\.github\.io$/.test(location.hostname)) return false;
+    const archivo = location.pathname.split('/').pop();
+    location.replace('https://' + dom + '/' + (archivo && archivo !== 'index.html' ? archivo : '') + location.search + location.hash);
+    return true;
+  };
   GS.normalizar = (d) => {
     d.settings = d.settings || {};
     ['categories', 'products', 'promotions', 'accounts'].forEach((k) => { if (!Array.isArray(d[k])) d[k] = []; });

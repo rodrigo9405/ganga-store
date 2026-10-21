@@ -33,7 +33,7 @@
         <p>${esc(GS.fechaLarga(hoy, { year: 'numeric' }))}, ${GS.pad(p.h)}:${GS.pad(p.min)} h en Buenos Aires</p></div>
       ${A.conflicto ? `<div class="aviso peligro">${icon('alert')}<div><b>Hay una versión publicada más nueva que tu borrador.</b><span>Alguien publicó cambios desde otro dispositivo. Si publicás tu borrador vas a reemplazarlos.</span><div class="acciones"><button class="btn btn-chico btn-suave" id="usarPublicada" type="button">Descartar mi borrador y usar la publicada</button></div></div></div>` : ''}
       ${A.sucio ? `<div class="aviso">${icon('cloud')}<div><b>Tenés cambios sin publicar.</b><span>Están guardados en este dispositivo. Tus clientes los van a ver cuando publiques.</span><div class="acciones"><button class="btn btn-chico" type="button" id="pubAhora">Publicar ahora</button><a class="btn btn-chico btn-suave" href="./?preview=1" target="_blank" rel="noopener">Ver vista previa</a></div></div></div>` : ''}
-      ${A.esperandoPages ? `<div class="aviso">${icon('refresh')}<div><b>La tienda se está actualizando.</b><span>GitHub Pages tarda uno o dos minutos en mostrar lo último que publicaste.</span></div></div>` : ''}
+      ${A.esperandoPages ? `<div class="aviso">${icon('refresh')}<div><b>La tienda se está actualizando.</b><span>Suele tardar uno o dos minutos en mostrar lo último que publicaste.</span></div></div>` : ''}
       ${A.esSuper() && pendientes ? `<section class="bloque"><div class="bloque-cab"><h2>Primeros pasos</h2></div>
         <ol class="pasos">${pasos.map((x) => `<li class="${x.ok ? 'hecho' : ''}"><span>${esc(x.t)}</span>${!x.ok && x.href ? `<a href="${x.href}">Hacerlo</a>` : ''}${!x.ok && !x.href ? '<a href="#" data-publicar>Publicar</a>' : ''}</li>`).join('')}</ol></section>` : ''}
 
