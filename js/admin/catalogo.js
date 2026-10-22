@@ -248,7 +248,7 @@
       else if (d.settings.featuredProductId === p.id) d.settings.featuredProductId = '';
       await A.guardar();
       A.guardia = null;
-      A.toast(nuevo ? 'Producto agregado. Publicá para que lo vean tus clientes.' : 'Cambios guardados');
+      A.toast(nuevo ? 'Producto agregado' : 'Cambios guardados');
       A.ir('#/productos');
     };
   }

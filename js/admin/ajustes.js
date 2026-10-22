@@ -58,27 +58,23 @@
         </div>
       </section>
 
-      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Publicación</h2><p>Productos, fotos y ajustes se guardan en tu repositorio privado de GitHub. Al publicar, el panel sube ahí los cambios con un token que se guarda solo en este dispositivo, y la tienda se actualiza sola.</p></div>
-        <form class="form" id="fGh" novalidate autocomplete="off">
-          <div class="form-grid tres">
-            <label class="campo"><span>Usuario de GitHub</span><input name="owner" value="${esc(gh.owner)}" autocapitalize="none" spellcheck="false" placeholder="rodrigo9405"></label>
-            <label class="campo"><span>Repositorio</span><input name="repo" value="${esc(gh.repo)}" autocapitalize="none" spellcheck="false" placeholder="ganga-store"></label>
-            <label class="campo"><span>Rama</span><input name="branch" value="${esc(gh.branch)}" autocapitalize="none" spellcheck="false"></label>
+      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Guardado automático</h2><p>Productos, fotos, cuentas y ajustes se guardan solos en tu repositorio de GitHub cada vez que hacés un cambio, y la tienda se actualiza en uno o dos minutos.</p></div>
+        ${GS.github.configurado()
+          ? `<div class="aviso" style="background:#eef6f0;border-color:#b9d3c1">${icon('check')}<div><b>Activo en este dispositivo.</b><span>Se guarda en <span class="codigo">${esc(gh.owner)}/${esc(gh.repo)}</span>.${A.ultimoGuardado ? ' Último guardado: ' + esc(GS.fechaHora(new Date(A.ultimoGuardado).toISOString())) + '.' : ''}</span></div></div>`
+          : A.vistas.avisoGuardado()}
+        ${A.esSuper() ? `<div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn ${GS.github.configurado() ? 'btn-suave' : ''}" type="button" data-conectar>${icon('key')} ${GS.github.configurado() ? 'Cambiar el token' : 'Activar el guardado'}</button>
           </div>
-          <label class="campo"><span>Token de acceso</span><div class="pass-campo"><input name="token" type="password" value="${esc(gh.token)}" autocomplete="off" spellcheck="false" placeholder="github_pat_…"><button class="btn btn-suave" type="button" id="ghVer" aria-label="Mostrar u ocultar token">${icon('eye')}</button></div></label>
-          <details><summary style="cursor:pointer;font-size:15px">Cómo crear el token (una sola vez)</summary>
-            <ol class="guia" style="margin-top:10px">
-              <li><span>Entrá a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com, crear token</a> con tu cuenta de GitHub.</span></li>
-              <li><span>Nombre: <span class="codigo">Panel Ganga Store</span>. Vencimiento: el que prefieras, por ejemplo un año.</span></li>
-              <li><span>En <b>Repository access</b> elegí <b>Only select repositories</b> y marcá <span class="codigo">${esc(gh.repo || 'ganga-store')}</span>.</span></li>
-              <li><span>En <b>Permissions</b>, <b>Repository permissions</b>, poné <b>Contents</b> en <b>Read and write</b>.</span></li>
-              <li><span>Tocá <b>Generate token</b>, copialo y pegalo arriba. Después tocá Probar conexión.</span></li>
-              <li><span>Para que otro administrador pueda publicar desde su celular, agregalo como colaborador del repositorio y que cree su propio token, o pasale uno.</span></li>
-            </ol></details>
-          <p id="ghMsg" role="status"></p>
-          <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="submit">${icon('check')} Guardar y probar conexión</button>${gh.token ? '<button class="btn btn-suave" type="button" id="ghBorrar">Quitar token de este dispositivo</button>' : ''}</div>
-          ${GS.github.urlTienda(s) ? `<p class="ayuda">Dirección pública de la tienda: <a href="${esc(GS.github.urlTienda(s))}" target="_blank" rel="noopener">${esc(GS.github.urlTienda(s))}</a></p>` : ''}
-        </form>
+          <details style="margin-top:14px"><summary style="cursor:pointer;font-size:15px">Opciones avanzadas</summary>
+            <form class="form" id="fGh" novalidate autocomplete="off" style="margin-top:12px">
+              <div class="form-grid tres">
+                <label class="campo"><span>Usuario de GitHub</span><input name="owner" value="${esc(gh.owner)}" autocapitalize="none" spellcheck="false"></label>
+                <label class="campo"><span>Repositorio</span><input name="repo" value="${esc(gh.repo)}" autocapitalize="none" spellcheck="false"></label>
+                <label class="campo"><span>Rama</span><input name="branch" value="${esc(gh.branch)}" autocapitalize="none" spellcheck="false"></label>
+              </div>
+              <div><button class="btn btn-suave" type="submit">Guardar opciones</button></div>
+            </form></details>` : ''}
+        ${GS.github.urlTienda(s) ? `<p class="ayuda" style="margin-top:12px">Dirección pública de la tienda: <a href="${esc(GS.github.urlTienda(s))}" target="_blank" rel="noopener">${esc(GS.github.urlTienda(s))}</a></p>` : ''}
       </section>
 
       <section class="bloque" id="visitas"><div class="bloque-cab"><h2>Contador de visitas</h2></div>
@@ -93,21 +89,21 @@
           <button class="btn btn-suave" type="button" id="exportar">${icon('download')} Descargar copia</button>
           <label class="btn btn-suave" style="cursor:pointer">${icon('upload')} Cargar copia<input type="file" accept="application/json,.json" id="importar" hidden></label>
         </div>
-        <p class="ayuda" style="margin-top:10px">Al cargar una copia se reemplazan productos, categorías, promos y ajustes del borrador. Las cuentas no se tocan.</p>
+        <p class="ayuda" style="margin-top:10px">Al cargar una copia se reemplazan productos, categorías, promos y ajustes. Las cuentas no se tocan.</p>
       </section>
 
       <section class="bloque" id="cuenta"><div class="bloque-cab"><h2>Mi cuenta</h2><p>${esc(yo.name)}, usuario ${esc(yo.username)}.</p></div>
         <form class="form" id="fPass" novalidate style="max-width:420px">
           <label class="campo"><span>Contraseña actual</span><input type="password" name="a" autocomplete="current-password"></label>
-          <label class="campo"><span>Contraseña nueva</span><input type="password" name="n" autocomplete="new-password"><small>Al menos 8 caracteres.</small></label>
+          <label class="campo"><span>Contraseña nueva</span><input type="password" name="n" autocomplete="new-password"><small>Al menos 10 caracteres.</small></label>
           <label class="campo"><span>Repetí la nueva</span><input type="password" name="r" autocomplete="new-password"></label>
           <p class="error-campo" id="passErr" role="alert"></p>
           <div><button class="btn" type="submit">Cambiar contraseña</button></div>
         </form>
       </section>
 
-      ${A.sucio ? `<section class="bloque" id="borrador"><div class="bloque-cab"><h2>Cambios sin publicar</h2><p>Si te equivocaste, podés volver a la versión que está publicada ahora.</p></div>
-        <button class="btn btn-peligro" type="button" id="descartar">Descartar cambios sin publicar</button></section>` : ''}`;
+      ${A.sucio && !GS.github.configurado() ? `<section class="bloque" id="borrador"><div class="bloque-cab"><h2>Cambios que no llegaron a la tienda</h2><p>Si te equivocaste, podés borrarlos de este dispositivo y volver a lo que está guardado en la tienda.</p></div>
+        <button class="btn btn-peligro" type="button" id="descartar">Borrar los cambios de este dispositivo</button></section>` : ''}`;
 
     if (args[0]) { const sec = document.getElementById(args[0]); if (sec) setTimeout(() => sec.scrollIntoView({ block: 'start' }), 30); }
 
@@ -160,23 +156,14 @@
       A.toast(m === 'auto' ? 'La tienda va a cambiar de diseño sola en cada fecha especial' : m === 'minimal' ? 'La tienda queda siempre minimalista' : `Diseño fijo: ${GS.TEMAS[s.themeMode].nombre}`);
     };
 
-    // github
-    $('#ghVer').onclick = () => { const t = $('#fGh [name=token]'); t.type = t.type === 'password' ? 'text' : 'password'; };
-    $('#fGh').onsubmit = async (e) => {
+    // guardado (opciones avanzadas)
+    const fgh = $('#fGh');
+    if (fgh) fgh.onsubmit = (e) => {
       e.preventDefault();
       const f = A.leerForm(e.target);
-      GS.github.guardarConfig(f);
-      const msg = $('#ghMsg');
-      if (!f.owner || !f.repo || !f.token) { msg.innerHTML = '<span class="error-campo">Completá usuario, repositorio y token.</span>'; return; }
-      msg.textContent = 'Probando conexión…';
-      try {
-        await GS.github.probar();
-        msg.innerHTML = `<span style="color:var(--ok)">Conexión correcta. Ya podés publicar desde este dispositivo.</span>`;
-        A.toast('GitHub conectado');
-      } catch (err) { msg.innerHTML = `<span class="error-campo">${esc(err.message)}</span>`; }
+      GS.github.guardarConfig({ owner: f.owner, repo: f.repo, branch: f.branch });
+      A.toast('Opciones guardadas');
     };
-    const gb = $('#ghBorrar');
-    if (gb) gb.onclick = () => { GS.github.guardarConfig(Object.assign(GS.github.config(), { token: '' })); A.toast('Token quitado de este dispositivo'); A.rutear(); };
 
     // visitas
     $('#noContar').onchange = (e) => { GS.visitas.excluirDispositivo(e.target.checked); A.toast(e.target.checked ? 'Tus visitas desde este dispositivo no se cuentan' : 'Tus visitas se cuentan como las de cualquier cliente'); };
@@ -194,11 +181,11 @@
         const j = JSON.parse(await f.text());
         const datos = j.datos || j;
         if (!Array.isArray(datos.products) || !Array.isArray(datos.categories)) throw new Error('El archivo no es una copia de Ganga Store.');
-        if (!(await A.confirmar({ titulo: 'Cargar copia', texto: `Se reemplazan los productos (${datos.products.length}), categorías (${datos.categories.length}), promos y ajustes del borrador. Después revisá y publicá.`, ok: 'Cargar copia', peligro: true }))) return;
+        if (!(await A.confirmar({ titulo: 'Cargar copia', texto: `Se reemplazan los productos (${datos.products.length}), categorías (${datos.categories.length}), promos y ajustes de la tienda.`, ok: 'Cargar copia', peligro: true }))) return;
         const cuentas = A.data.accounts;
         A.data = GS.normalizar(Object.assign({}, A.pub, datos, { accounts: cuentas, rev: A.pub.rev }));
         await A.guardar();
-        A.toast('Copia cargada en el borrador');
+        A.toast('Copia cargada');
         A.rutear();
       } catch (err) { A.toast(err.message.startsWith('El archivo') ? err.message : 'No se pudo leer el archivo. Elegí una copia descargada desde este panel.', true); }
       e.target.value = '';
@@ -215,18 +202,20 @@
       $('#passErr').textContent = err;
       if (err) return;
       Object.assign(cta, await A.nuevaPass(f.n), { mustChange: false });
+      await A.darAcceso(cta, f.n);
+      A.pass = f.n;
       A.yo = cta;
       await A.guardar();
       e.target.reset();
-      A.toast('Contraseña cambiada. Publicá para que valga en todos los dispositivos.');
+      A.toast('Contraseña cambiada');
     };
 
     const desc = $('#descartar');
     if (desc) desc.onclick = async () => {
-      if (!(await A.confirmar({ titulo: 'Descartar cambios', texto: 'Se borran todos los cambios que no publicaste, incluidas las fotos nuevas. No se puede deshacer.', ok: 'Descartar', peligro: true }))) return;
+      if (!(await A.confirmar({ titulo: 'Descartar cambios', texto: 'Se borran de este dispositivo los cambios que no llegaron a la tienda, incluidas las fotos nuevas. No se puede deshacer.', ok: 'Descartar', peligro: true }))) return;
       await A.descartarBorrador();
       A.yo = A.cuenta(A.yo.id) || A.yo;
-      A.toast('Volviste a la versión publicada');
+      A.toast('Listo: ves lo mismo que está guardado en la tienda');
       A.rutear();
     };
   };

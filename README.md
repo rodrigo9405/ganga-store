@@ -26,9 +26,11 @@ Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estátic
 
 ## Cómo funciona sin base de datos
 
-1. Lo que cambiás en el panel se guarda primero en tu navegador (borrador). Podés verlo con "Vista previa".
-2. Al tocar **Publicar**, el panel sube los cambios a este repositorio **privado** (`data/store.js`, `data/cuentas.js` y las fotos en `img/subidas/`) con un token de GitHub que queda guardado solo en tu dispositivo.
-3. Cloudflare detecta el cambio y actualiza la tienda en tu dominio en uno o dos minutos.
+1. Cada cambio que hacés en el panel **se guarda solo** en este repositorio (`data/store.js`, `data/cuentas.js` y las fotos en `img/subidas/`). Arriba a la derecha se ve "Guardando…" y después "Guardado".
+2. El hosting conectado al repositorio actualiza la tienda en uno o dos minutos.
+3. Si dos personas guardan a la vez, los cambios de las dos se suman. Si se corta internet, lo pendiente queda en el dispositivo y se sube solo cuando vuelve la conexión.
+
+**Activar el guardado (una sola vez).** El súper administrador crea un token de GitHub y lo pega en el panel; el panel lo pide solo la primera vez que entrás. El token se guarda **cifrado con la contraseña de cada cuenta**, así las demás cuentas guardan sin configurar nada. Las cuentas creadas antes de activar el guardado necesitan una contraseña nueva (*Cuentas → Contraseña*).
 
 Las cuentas del equipo están en `data/cuentas.js`, separadas de los datos de la tienda: la tienda nunca descarga ese archivo y se puede proteger junto con el panel.
 
@@ -52,14 +54,14 @@ Las visitas se cuentan con [Abacus](https://abacus.jasoncameron.dev), un contado
 Desde ese momento, el panel ni siquiera se abre si tu correo no está en la lista; después se pide además usuario y contraseña.
 4. Opcional: protegé también la dirección técnica `ganga-store.pages.dev` desde el proyecto de Pages (*Settings → Access policy*). Igual, quien entre por ahí con el navegador es enviado a tu dominio.
 
-**4. Primer ingreso.** Entrá a `https://tudominio.com/admin` con el usuario `superadmin` y la contraseña inicial que te pasé. Te va a pedir que la cambies. Después, en *Ajustes → Publicación*, pegá el token de GitHub (los pasos están ahí; permiso *Contents: Read and write* sobre este repositorio) y tocá **Publicar**.
+**4. Primer ingreso.** Entrá a `https://tudominio.com/admin` con el usuario `superadmin` y la contraseña inicial que te pasé. Te va a pedir que la cambies y después que actives el guardado: seguí los pasos de la pantalla para crear el token (permiso *Contents: Read and write* sobre este repositorio) y pegalo. Listo: desde ahí todo se guarda solo.
 
 ## Seguridad, en corto
 
 - El código y los datos viven en un repositorio privado. El público solo ve la tienda.
-- El token de GitHub nunca se sube al repositorio. Sin token nadie puede cambiar la tienda publicada.
+- El token de GitHub nunca queda legible: se guarda cifrado (AES-GCM) con la contraseña de cada cuenta, y al cerrar sesión se borra del dispositivo. Por eso las contraseñas deben tener al menos 10 caracteres.
 - Con Cloudflare Access, el panel y el archivo de cuentas quedan cerrados a los correos autorizados. Las contraseñas además se guardan con hash PBKDF2 (150.000 iteraciones).
-- Si dos personas publican a la vez, gana la última; el panel avisa si alguien publicó mientras editabas.
+- Si dos personas guardan a la vez, el panel suma los cambios de las dos en vez de pisarlos.
 
 ## Estructura
 

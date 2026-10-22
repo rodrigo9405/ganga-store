@@ -51,6 +51,15 @@ body.adm-body { background: var(--paper-2); }
 @media (min-width: 980px) { .adm-top { padding: 12px 32px; } .adm-top .solo-movil { display: none; } }
 .adm-top h1 { font-family: var(--serif); font-size: 24px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 720px) { .adm-top h1 { font-size: 28px; } }
+/* indicador de guardado */
+.guardado { display: flex; align-items: center; min-height: 40px; }
+.guardado .g-txt { display: inline-flex; align-items: center; gap: 6px; font-size: 14.5px; color: var(--ink-3); white-space: nowrap; padding: 0 6px; }
+.guardado .g-txt.ok { color: var(--ok); }
+.guardado .g-txt .ic, .guardado .btn .ic { width: 18px; height: 18px; }
+.guardado .btn { min-height: 40px; padding: 6px 12px; font-size: 14px; white-space: nowrap; }
+.girando .ic { animation: girar 1s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (max-width: 480px) { .guardado .btn span { max-width: 9.5em; overflow: hidden; text-overflow: ellipsis; } }
 .pub-estado { display: flex; align-items: center; gap: 10px; }
 .pub-estado .punto { display: none; font-size: 13.5px; color: var(--warn); align-items: center; gap: 6px; white-space: nowrap; }
 .pub-estado .punto::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }

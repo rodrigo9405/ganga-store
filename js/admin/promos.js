@@ -201,7 +201,7 @@
       await A.guardar();
       A.guardia = null;
       const est = GS.promoEstado(p);
-      A.toast(est === 'activa' ? 'Promoción guardada. Publicá para que se vea en la tienda.' : est === 'programada' ? `Promoción programada: empieza el ${GS.fechaCorta(p.start)}.` : 'Promoción guardada.');
+      A.toast(est === 'activa' ? 'Promoción guardada' : est === 'programada' ? `Promoción programada: empieza el ${GS.fechaCorta(p.start)}.` : 'Promoción guardada.');
       A.ir('#/promociones');
     };
   }

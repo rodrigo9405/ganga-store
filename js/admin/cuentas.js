@@ -26,7 +26,7 @@
           return `<div class="item" data-id="${esc(c.id)}" style="--th:44px">
             <span class="avatar" style="width:44px;height:44px">${esc((c.name || c.username).charAt(0).toUpperCase())}</span>
             <div class="item-txt"><b>${esc(c.name)}${soyYo ? ' <small>(vos)</small>' : ''}</b><small>Usuario: ${esc(c.username)}, creada el ${esc(GS.fechaHora(c.createdAt).split(',')[0])}</small>
-              <div class="item-meta"><span class="etq ${c.role === 'superadmin' ? 'oro' : 'gris'}">${ROLES[c.role]}</span><span class="etq ${c.active ? 'ok' : 'mal'}">${c.active ? 'Activa' : 'Desactivada'}</span>${c.mustChange ? '<span class="etq warn">Debe cambiar la contraseña</span>' : ''}</div></div>
+              <div class="item-meta"><span class="etq ${c.role === 'superadmin' ? 'oro' : 'gris'}">${ROLES[c.role]}</span><span class="etq ${c.active ? 'ok' : 'mal'}">${c.active ? 'Activa' : 'Desactivada'}</span>${c.mustChange ? '<span class="etq warn">Debe cambiar la contraseña</span>' : ''}${GS.github.configurado() && c.active && !c.llave ? '<span class="etq mal">No puede guardar: generale una contraseña nueva</span>' : ''}</div></div>
             <div class="item-acc">
               <button class="btn btn-suave" type="button" data-edit>${icon('edit')} Editar</button>
               <button class="btn btn-suave" type="button" data-pass>${icon('key')} Contraseña</button>
@@ -34,7 +34,8 @@
             </div></div>`;
         }).join('')}</div>
       </section>
-      <div class="aviso" style="margin-top:16px">${icon('cloud')}<div><span>Los cambios en las cuentas valen en todos los dispositivos recién cuando publicás. Hasta entonces, solo funcionan en este.</span></div></div>`;
+      <div style="margin-top:16px">${A.vistas.avisoGuardado ? A.vistas.avisoGuardado() : ''}</div>
+      <p class="ayuda" style="margin-top:12px">Los cambios en las cuentas se guardan solos. Una cuenta o contraseña nueva puede tardar un minuto en funcionar en otros dispositivos.</p>`;
 
     $('#nueva').onclick = () => formulario(null);
     $$('.lista .item').forEach((it) => {
@@ -89,12 +90,15 @@
       if (err) return;
       $('#cOk', dlg).disabled = true;
       if (nueva) {
-        d.accounts.push(Object.assign({ id: GS.uid('u'), username: user, name: nombre, role: rol, active: true, mustChange: true, createdAt: new Date().toISOString() }, await A.nuevaPass(p)));
+        const cta = Object.assign({ id: GS.uid('u'), username: user, name: nombre, role: rol, active: true, mustChange: true, createdAt: new Date().toISOString() }, await A.nuevaPass(p));
+        await A.darAcceso(cta, p);
+        d.accounts.push(cta);
       } else Object.assign(c, { name: nombre, username: user, role: rol });
       await A.guardar();
       dlg.close();
       if (c && c.id === A.yo.id) { A.yo = c; }
-      A.toast(nueva ? `Cuenta creada. Usuario: ${user}` : 'Cuenta actualizada');
+      if (nueva) mostrarDatos(nombre, user, p);
+      else A.toast('Cuenta actualizada');
       if (c && c.id === A.yo.id && rol !== 'superadmin') location.reload(); else A.rutear();
     };
   }
@@ -114,12 +118,30 @@
       const err = A.validarPass(v);
       $('#ppErr', dlg).textContent = err || '';
       if (err) return;
+      $('#ppOk', dlg).disabled = true;
       const forzar = $('#ppForzar', dlg);
       Object.assign(c, await A.nuevaPass(v), { mustChange: forzar ? forzar.checked : false });
+      await A.darAcceso(c, v);
+      if (c.id === A.yo.id) A.pass = v;
       await A.guardar();
       dlg.close();
-      A.toast('Contraseña actualizada. Publicá para que valga en todos los dispositivos.');
       A.rutear();
+      if (c.id !== A.yo.id) mostrarDatos(c.name, c.username, v);
+      else A.toast('Contraseña actualizada');
+    };
+  }
+
+  /* Muestra usuario y contraseña para pasárselos a la persona */
+  function mostrarDatos(nombre, user, pass) {
+    const d = A.dialogo({
+      titulo: 'Datos para ingresar',
+      cuerpo: `<p>Pasale estos datos a <b>${esc(nombre)}</b>. Al entrar le vamos a pedir que elija su propia contraseña.</p>
+        <ul class="cambios"><li><span>Dirección</span><span class="codigo">${esc(location.origin + location.pathname)}</span></li><li><span>Usuario</span><span class="codigo">${esc(user)}</span></li><li><span>Contraseña</span><span class="codigo">${esc(pass)}</span></li></ul>
+        <p class="ayuda">Puede tardar un minuto en funcionar en otros dispositivos.</p>`,
+      pie: '<button class="btn btn-suave" type="button" id="mdCopiar">Copiar</button><button class="btn" type="button" data-cerrar>Listo</button>',
+    });
+    $('#mdCopiar', d).onclick = async () => {
+      try { await navigator.clipboard.writeText(`Panel Ganga Store\n${location.origin + location.pathname}\nUsuario: ${user}\nContraseña: ${pass}`); A.toast('Copiado'); } catch (e) { A.toast('No se pudo copiar. Anotalos a mano.', true); }
     };
   }
 })();

@@ -9,6 +9,19 @@
   let modo = 'dia';
   let tabla = false;
 
+  /* Aviso grande en el panel cuando los cambios no están llegando a la tienda */
+  A.vistas.avisoGuardado = () => {
+    const sinConexion = !GS.github.configurado();
+    if (sinConexion) {
+      return `<div class="aviso peligro">${icon('alert')}<div><b>Los cambios no se están guardando en la tienda.</b><span>Lo que cambiás queda solo en este dispositivo: tus clientes no lo ven y desde otro celular o computadora no aparece.</span>
+        <div class="acciones"><button class="btn btn-chico" type="button" data-conectar>${A.esSuper() ? 'Activar el guardado' : 'Cómo lo soluciono'}</button></div></div></div>`;
+    }
+    if (A.estado === 'error') {
+      return `<div class="aviso peligro">${icon('alert')}<div><b>El último cambio no se pudo guardar.</b><span>${esc(A.ultimoError)}</span><div class="acciones"><button class="btn btn-chico" type="button" data-reintentar>Reintentar</button></div></div></div>`;
+    }
+    return '';
+  };
+
   A.vistas.panel = () => {
     A.titulo('Panel');
     const v = A.vista();
@@ -22,20 +35,17 @@
 
     const pasos = [
       { ok: !yo.mustChange, t: 'Cambiar la contraseña inicial', href: '#/ajustes/cuenta' },
-      { ok: GS.github.configurado(), t: 'Conectar GitHub para poder publicar', href: '#/ajustes/publicacion' },
+      { ok: GS.github.configurado(), t: 'Activar el guardado automático', href: '' },
       { ok: !!(d.settings.instagram || d.settings.facebook || d.settings.tiktok), t: 'Cargar Instagram y demás redes', href: '#/ajustes/tienda' },
-      { ok: !!A.pub.updatedBy && A.pub.updatedBy !== 'Instalación inicial', t: 'Publicar la primera versión desde el panel', href: '' },
     ];
     const pendientes = pasos.filter((x) => !x.ok).length;
 
     v.innerHTML = `
       <div class="saludo"><h2>Hola, ${esc(yo.name || yo.username)}</h2>
         <p>${esc(GS.fechaLarga(hoy, { year: 'numeric' }))}, ${GS.pad(p.h)}:${GS.pad(p.min)} h en Buenos Aires</p></div>
-      ${A.conflicto ? `<div class="aviso peligro">${icon('alert')}<div><b>Hay una versión publicada más nueva que tu borrador.</b><span>Alguien publicó cambios desde otro dispositivo. Si publicás tu borrador vas a reemplazarlos.</span><div class="acciones"><button class="btn btn-chico btn-suave" id="usarPublicada" type="button">Descartar mi borrador y usar la publicada</button></div></div></div>` : ''}
-      ${A.sucio ? `<div class="aviso">${icon('cloud')}<div><b>Tenés cambios sin publicar.</b><span>Están guardados en este dispositivo. Tus clientes los van a ver cuando publiques.</span><div class="acciones"><button class="btn btn-chico" type="button" id="pubAhora">Publicar ahora</button><a class="btn btn-chico btn-suave" href="./?preview=1" target="_blank" rel="noopener">Ver vista previa</a></div></div></div>` : ''}
-      ${A.esperandoPages ? `<div class="aviso">${icon('refresh')}<div><b>La tienda se está actualizando.</b><span>Suele tardar uno o dos minutos en mostrar lo último que publicaste.</span></div></div>` : ''}
+      <div id="avisoGuardado">${A.vistas.avisoGuardado()}</div>
       ${A.esSuper() && pendientes ? `<section class="bloque"><div class="bloque-cab"><h2>Primeros pasos</h2></div>
-        <ol class="pasos">${pasos.map((x) => `<li class="${x.ok ? 'hecho' : ''}"><span>${esc(x.t)}</span>${!x.ok && x.href ? `<a href="${x.href}">Hacerlo</a>` : ''}${!x.ok && !x.href ? '<a href="#" data-publicar>Publicar</a>' : ''}</li>`).join('')}</ol></section>` : ''}
+        <ol class="pasos">${pasos.map((x) => `<li class="${x.ok ? 'hecho' : ''}"><span>${esc(x.t)}</span>${!x.ok && x.href ? `<a href="${x.href}">Hacerlo</a>` : ''}${!x.ok && !x.href ? '<a href="#" data-conectar>Activar</a>' : ''}</li>`).join('')}</ol></section>` : ''}
 
       <section class="bloque" aria-labelledby="tVisitas">
         <div class="bloque-cab"><h2 id="tVisitas">Visitas a la tienda</h2>
@@ -54,11 +64,6 @@
         <a class="tile" href="#/ajustes/diseno" style="text-decoration:none;color:inherit"><span>Diseño de hoy</span><b style="font-size:22px;margin-top:6px">${esc(GS.TEMAS[tema.id].nombre)}</b><small>${tema.auto ? (tema.hasta ? 'automático, hasta el ' + GS.fechaCorta(tema.hasta) : 'automático') : 'elegido a mano'}</small></a>
       </div>`;
 
-    const usar = $('#usarPublicada');
-    if (usar) usar.onclick = async () => { if (await A.confirmar({ titulo: 'Descartar borrador', texto: 'Vas a perder los cambios que no publicaste en este dispositivo.', ok: 'Descartar', peligro: true })) { await A.descartarBorrador(); A.rutear(); } };
-    const pa = $('#pubAhora');
-    if (pa) pa.onclick = () => A.publicar();
-    $$('[data-publicar]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); A.publicar(); }));
     $$('.segmentos button').forEach((b) => (b.onclick = () => {
       modo = b.dataset.m;
       $$('.segmentos button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));

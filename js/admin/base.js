@@ -28,44 +28,132 @@
     const r = crypto.getRandomValues(new Uint32Array(12));
     return Array.from(r, (n) => abc[n % abc.length]).join('').replace(/(.{4})(?!$)/g, '$1-');
   };
-  A.validarPass = (p) => (p.length < 8 ? 'Usá al menos 8 caracteres.' : null);
+  A.validarPass = (p) => (p.length < 10 ? 'Usá al menos 10 caracteres.' : null);
+
+  /* ---------- acceso a GitHub cifrado con la contraseña de cada cuenta (AES-GCM) ---------- */
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const deB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  async function claveDe(pass, saltHex, iter) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: deHex(saltHex), iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  A.cifrar = async (texto, pass) => {
+    const s = hex(crypto.getRandomValues(new Uint8Array(16))), iv = crypto.getRandomValues(new Uint8Array(12)), i = 200000;
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await claveDe(pass, s, i), new TextEncoder().encode(texto));
+    return { s, iv: hex(iv), i, ct: b64(ct) };
+  };
+  A.descifrar = async (llave, pass) => {
+    try {
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: deHex(llave.iv) }, await claveDe(pass, llave.s, llave.i), deB64(llave.ct));
+      return new TextDecoder().decode(pt);
+    } catch (e) { return ''; }
+  };
+  /* Deja a una cuenta con acceso al guardado, cifrando el token con su contraseña */
+  A.darAcceso = async (cuenta, pass) => {
+    const tok = GS.github.config().token;
+    if (tok) cuenta.llave = await A.cifrar(tok, pass);
+  };
+  A.pass = ''; // contraseña de esta sesión (solo en memoria, para cifrar el acceso si hace falta)
 
   /* ---------- datos ---------- */
   const firma = (d) => JSON.stringify(Object.assign({}, d, { rev: '', updatedAt: '', updatedBy: '' }));
+  A.firma = firma;
+  let borradorBase = null;
   async function cargarDatos() {
-    let pub = await GS.cargarPublicado();
+    const pub = await GS.cargarPublicado();
     const cuentas = await GS.cargarCuentas();
     if (cuentas) pub.accounts = cuentas;
-    // Recién publicado: el hosting puede tardar en servir la versión nueva
-    const reciente = await GS.idb.get('publicadoLocal');
-    if (reciente && reciente.data) {
-      if (reciente.data.rev === pub.rev || Date.now() - reciente.at > 15 * 60000) await GS.idb.del('publicadoLocal');
-      else { pub = reciente.data; A.esperandoPages = true; }
-    }
     A.pub = GS.normalizar(pub);
+    await GS.idb.del('publicadoLocal').catch(() => {});
     GS.imgCache = (await GS.idb.get('imgcache')) || {};
     const b = await GS.idb.get('borrador');
-    A.conflicto = false;
+    borradorBase = b && b.data ? b : null;
+    aplicarBorrador();
+  }
+  /* Junta lo guardado en GitHub con lo que haya quedado pendiente en este dispositivo */
+  function aplicarBorrador() {
+    const b = borradorBase;
     if (b && b.data) {
-      A.data = GS.normalizar(b.data);
-      if (b.baseRev && b.baseRev !== A.pub.rev && firma(b.data) !== firma(A.pub)) A.conflicto = true;
+      const base = b.base || null;
+      A.data = base && base.rev === A.pub.rev ? GS.normalizar(GS.clone(b.data)) : GS.normalizar(GS.fusionar(base, b.data, A.pub));
     } else A.data = GS.clone(A.pub);
     A.sucio = firma(A.data) !== firma(A.pub);
+    if (A.yo) A.yo = A.cuenta(A.yo.id) || A.yo;
   }
-  /* Guarda el borrador después de cada cambio */
+  /* Trae la última versión directo del repositorio (sin esperar al hosting) */
+  A.recargarDesdeGitHub = async () => {
+    if (!GS.github.configurado()) return false;
+    try {
+      A.pub = await GS.github.leerRemoto();
+      aplicarBorrador();
+      return true;
+    } catch (e) { A.ultimoError = e.message; return false; }
+  };
+  async function guardarBorrador() {
+    try {
+      if (A.sucio) { borradorBase = { data: A.data, base: A.pub, at: Date.now() }; await GS.idb.set('borrador', borradorBase); }
+      else { borradorBase = null; await GS.idb.del('borrador'); }
+    } catch (e) { /* sin almacenamiento local: queda en memoria hasta que se suba */ }
+  }
+  /* Se llama después de cada cambio: guarda en el dispositivo y sube a la tienda */
   A.guardar = async () => {
     A.sucio = firma(A.data) !== firma(A.pub);
-    if (A.sucio) await GS.idb.set('borrador', { data: A.data, baseRev: A.pub.rev, at: Date.now() });
-    else await GS.idb.del('borrador');
+    await guardarBorrador();
+    if (A.sucio) { A.estado = GS.github.configurado() ? 'pendiente' : 'sin-conexion'; programar(900); }
     pintarEstadoPub();
   };
   A.descartarBorrador = async () => {
     A.data = GS.clone(A.pub);
-    A.conflicto = false;
-    await GS.idb.del('borrador');
     A.sucio = false;
+    await guardarBorrador();
+    A.estado = 'ok';
     pintarEstadoPub();
   };
+
+  /* ---------- guardado automático ---------- */
+  A.estado = 'ok';            // ok | pendiente | guardando | error | sin-conexion
+  A.ultimoError = '';
+  let timer = null, enCurso = false, avisoTienda = false;
+  function programar(ms) { clearTimeout(timer); timer = setTimeout(subir, ms); }
+  async function subir() {
+    if (enCurso || !A.yo) return;
+    if (!A.sucio) { A.estado = 'ok'; pintarEstadoPub(); return; }
+    if (!GS.github.configurado()) { A.estado = 'sin-conexion'; pintarEstadoPub(); return; }
+    enCurso = true;
+    A.estado = 'guardando'; pintarEstadoPub();
+    const enviado = GS.clone(A.data);
+    const base = GS.clone(A.pub);
+    try {
+      const r = await GS.github.guardar(enviado, base, (A.yo && (A.yo.name || A.yo.username)) || '');
+      Object.assign(GS.imgCache, r.cache);
+      try { await GS.idb.set('imgcache', GS.imgCache); } catch (e) { /* nada */ }
+      A.pub = GS.normalizar(GS.clone(r.data));
+      A.data = firma(A.data) === firma(enviado) ? GS.clone(r.data) : GS.normalizar(GS.fusionar(enviado, A.data, r.data));
+      A.yo = A.cuenta(A.yo.id) || A.yo;
+      A.sucio = firma(A.data) !== firma(A.pub);
+      await guardarBorrador();
+      A.estado = A.sucio ? 'pendiente' : 'ok';
+      A.ultimoError = '';
+      A.ultimoGuardado = Date.now();
+      if (r.fusion) {
+        A.toast('Guardado. También se sumaron cambios que otra persona hizo hace un momento.');
+        if (!A.guardia) rutear();
+      } else if (!avisoTienda) {
+        avisoTienda = true;
+        A.toast('Guardado. La tienda se actualiza en uno o dos minutos.');
+      }
+    } catch (e) {
+      A.estado = 'error';
+      A.ultimoError = e.message;
+      if (e.red) programar(20000);
+    }
+    enCurso = false;
+    if (A.sucio && A.estado !== 'error') programar(300);
+    pintarEstadoPub();
+  }
+  A.subirAhora = () => { clearTimeout(timer); return subir(); };
+  window.addEventListener('online', () => { if (A.sucio) programar(500); });
+
   A.esSuper = () => A.yo && A.yo.role === 'superadmin';
   A.cuenta = (id) => A.data.accounts.find((a) => a.id === id);
 
@@ -161,14 +249,29 @@
       const cta = A.data.accounts.find((a) => a.username.toLowerCase() === usuario);
       let ok = false;
       if (cta) ok = (await A.hashPass(f.p, cta.salt, cta.iter)) === cta.hash;
-      btn.disabled = false; btn.textContent = 'Ingresar';
-      if (!ok) { $('#eIngreso').textContent = 'Usuario o contraseña incorrectos.'; return; }
-      if (!cta.active) { $('#eIngreso').textContent = 'Esta cuenta está desactivada. Pedile acceso al súper administrador.'; return; }
-      guardarSesion({ id: cta.id, t: Date.now() }, f.r === 'on');
+      if (!ok) {
+        btn.disabled = false; btn.textContent = 'Ingresar';
+        $('#eIngreso').textContent = 'Usuario o contraseña incorrectos. Si la cuenta o la contraseña se cambiaron hace menos de un minuto, esperá un momento y probá de nuevo.';
+        return;
+      }
+      if (!cta.active) { btn.disabled = false; btn.textContent = 'Ingresar'; $('#eIngreso').textContent = 'Esta cuenta está desactivada. Pedile acceso al súper administrador.'; return; }
+      const recordar = f.r === 'on';
+      guardarSesion({ id: cta.id, t: Date.now() }, recordar);
       GS.visitas.excluirDispositivo(true);
-      A.yo = cta;
+      A.pass = f.p;
+      // El acceso al guardado viene cifrado con la contraseña: nadie tiene que configurar nada
+      if (cta.llave) {
+        const tok = await A.descifrar(cta.llave, f.p);
+        if (tok) GS.github.usarToken(tok, recordar);
+      }
+      btn.textContent = 'Entrando…';
+      await A.recargarDesdeGitHub();
+      A.yo = A.cuenta(cta.id) || cta;
+      // si esta cuenta todavía no tenía el acceso cifrado y este dispositivo sí lo tiene, se lo agrega
+      if (GS.github.configurado() && !A.yo.llave) { await A.darAcceso(A.yo, f.p); await A.guardar(); }
       montar();
-      if (cta.mustChange) A.cambiarPassObligatorio();
+      if (A.yo.mustChange) A.cambiarPassObligatorio();
+      else if (A.esSuper() && !GS.github.configurado()) A.conectarGuardado();
     };
   }
 
@@ -176,7 +279,7 @@
     const d = A.dialogo({
       titulo: 'Elegí tu contraseña',
       cuerpo: `<p>Es tu primer ingreso. Cambiá la contraseña inicial por una tuya antes de seguir.</p>
-        <label class="campo"><span>Contraseña nueva</span><input type="password" id="pn1" autocomplete="new-password"><small>Al menos 8 caracteres.</small></label>
+        <label class="campo"><span>Contraseña nueva</span><input type="password" id="pn1" autocomplete="new-password"><small>Al menos 10 caracteres.</small></label>
         <label class="campo"><span>Repetila</span><input type="password" id="pn2" autocomplete="new-password"></label>
         <p class="error-campo" id="pnErr" role="alert"></p>`,
       pie: '<button class="btn" type="button" id="pnOk">Guardar contraseña</button>',
@@ -187,13 +290,17 @@
       const a = $('#pn1', d).value, b = $('#pn2', d).value;
       const err = A.validarPass(a) || (a !== b ? 'Las contraseñas no coinciden.' : null);
       if (err) { $('#pnErr', d).textContent = err; return; }
+      $('#pnOk', d).disabled = true;
       const cta = A.cuenta(A.yo.id);
       Object.assign(cta, await A.nuevaPass(a), { mustChange: false });
+      await A.darAcceso(cta, a);
+      A.pass = a;
       A.yo = cta;
       await A.guardar();
       d.close();
-      A.toast('Contraseña guardada. Publicá los cambios para que valga en todos los dispositivos.');
+      A.toast('Contraseña guardada.');
       rutear();
+      if (A.esSuper() && !GS.github.configurado()) A.conectarGuardado();
     };
   };
 
@@ -230,10 +337,7 @@
           <header class="adm-top">
             <button class="btn btn-icono solo-movil" id="btnMenu" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="admNav">${icon('menu')}</button>
             <h1 id="admTitulo">Panel</h1>
-            <div class="pub-estado" id="pubEstado">
-              <span class="punto">Cambios sin publicar</span>
-              <button class="btn btn-publicar" id="btnPublicar" type="button">${icon('cloud')} Publicar</button>
-            </div>
+            <div class="guardado" id="pubEstado" role="status" aria-live="polite"></div>
           </header>
           <main class="adm-cont" id="vista" tabindex="-1"></main>
         </div>
@@ -248,24 +352,41 @@
     $('#admVelo').onclick = () => menu(false);
     $('#admNav').addEventListener('click', (e) => { if (e.target.closest('a')) menu(false); });
     $('#btnSalir').onclick = async () => {
-      if (A.sucio && !(await A.confirmar({ titulo: 'Cerrar sesión', texto: 'Tenés cambios sin publicar. Quedan guardados en este dispositivo y los vas a ver la próxima vez que entres.', ok: 'Cerrar sesión' }))) return;
+      if (A.sucio && !(await A.confirmar({ titulo: 'Cerrar sesión', texto: A.estado === 'guardando' || A.estado === 'pendiente' ? 'Todavía se están guardando cambios. Esperá unos segundos para no perderlos.' : 'Hay cambios que no se pudieron subir a la tienda. Quedan en este dispositivo y se suben la próxima vez que entres.', ok: 'Cerrar sesión igual' }))) return;
+      GS.github.olvidarToken();
       A.salir();
     };
-    $('#btnPublicar').onclick = () => A.publicar();
+    $('#vista').addEventListener('click', (e) => {
+      if (e.target.closest('[data-conectar]')) { e.preventDefault(); A.conectarGuardado(); }
+      if (e.target.closest('[data-reintentar]')) A.subirAhora();
+    });
+    $('#pubEstado').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.acc === 'conectar') A.conectarGuardado();
+      if (b.dataset.acc === 'reintentar') A.subirAhora();
+    });
     pintarEstadoPub();
     window.onhashchange = rutear;
-    window.onbeforeunload = (e) => { if (A.guardia && A.guardia()) { e.preventDefault(); e.returnValue = ''; } };
+    window.onbeforeunload = (e) => {
+      if ((A.guardia && A.guardia()) || (A.sucio && GS.github.configurado())) { e.preventDefault(); e.returnValue = ''; }
+    };
+    if (A.sucio) programar(400);
     rutear();
   }
   function pintarEstadoPub() {
     const box = $('#pubEstado');
     if (!box) return;
-    box.classList.toggle('sucio', A.sucio);
-    const b = $('#btnPublicar');
-    b.dataset.sucio = String(A.sucio);
-    b.title = A.sucio ? 'Publicar los cambios en la tienda' : 'No hay cambios para publicar';
+    const e = A.sucio && !GS.github.configurado() ? 'sin-conexion' : A.estado;
+    box.dataset.estado = e;
+    if (e === 'sin-conexion') box.innerHTML = `<button class="btn btn-chico btn-peligro" type="button" data-acc="conectar" title="Los cambios quedan solo en este dispositivo">${icon('alert')} <span>Sin guardar</span></button>`;
+    else if (e === 'error') box.innerHTML = `<button class="btn btn-chico btn-peligro" type="button" data-acc="reintentar" title="${esc(A.ultimoError)}">${icon('refresh')} <span>Reintentar</span></button>`;
+    else if (e === 'guardando' || e === 'pendiente') box.innerHTML = `<span class="g-txt girando">${icon('refresh')} <span>Guardando…</span></span>`;
+    else box.innerHTML = `<span class="g-txt ok" title="Todo está guardado en la tienda">${icon('check')} <span>Guardado</span></span>`;
     const lt = $('#linkTienda');
     if (lt) lt.href = A.sucio ? './?preview=1' : './';
+    const av = document.getElementById('avisoGuardado');
+    if (av && A.vistas.avisoGuardado) av.innerHTML = A.vistas.avisoGuardado();
   }
   A.pintarEstadoPub = pintarEstadoPub;
 
@@ -290,92 +411,67 @@
   A.ir = (ruta) => { location.hash = ruta; };
   A.rutear = rutear;
 
-  /* ---------- publicar ---------- */
-  const PASOS = [['conectar', 'Conectar con GitHub'], ['fotos', 'Subir fotos nuevas'], ['datos', 'Guardar productos, promos y ajustes'], ['commit', 'Publicar la versión nueva']];
-  function resumenCambios() {
-    const n = A.data, v = A.pub;
-    const cmp = (lista) => {
-      const a = new Map((v[lista] || []).map((x) => [x.id, JSON.stringify(x)]));
-      const b = new Map((n[lista] || []).map((x) => [x.id, JSON.stringify(x)]));
-      let nuevos = 0, editados = 0, borrados = 0;
-      b.forEach((val, id) => { if (!a.has(id)) nuevos++; else if (a.get(id) !== val) editados++; });
-      a.forEach((_, id) => { if (!b.has(id)) borrados++; });
-      return { nuevos, editados, borrados };
-    };
-    const filas = [['products', 'Productos'], ['categories', 'Categorías'], ['promotions', 'Promociones'], ['accounts', 'Cuentas']].map(([k, t]) => {
-      const c = cmp(k);
-      const partes = [];
-      if (c.nuevos) partes.push(`${c.nuevos} ${c.nuevos === 1 ? 'nuevo' : 'nuevos'}`);
-      if (c.editados) partes.push(`${c.editados} ${c.editados === 1 ? 'editado' : 'editados'}`);
-      if (c.borrados) partes.push(`${c.borrados} ${c.borrados === 1 ? 'eliminado' : 'eliminados'}`);
-      return partes.length ? `<li><span>${t}</span><span>${partes.join(', ')}</span></li>` : '';
-    }).join('');
-    const ajustes = JSON.stringify(n.settings) !== JSON.stringify(v.settings) ? '<li><span>Ajustes de la tienda</span><span>modificados</span></li>' : '';
-    const fotos = GS.github.contarFotosNuevas(n);
-    return `<ul class="cambios">${filas}${ajustes}${fotos ? `<li><span>Fotos nuevas</span><span>${fotos}</span></li>` : ''}</ul>`;
-  }
-  A.publicar = async () => {
-    if (!A.sucio) { A.toast('No hay cambios para publicar. La tienda ya muestra la última versión.'); return; }
-    if (!GS.github.configurado()) {
-      const d = A.dialogo({
-        titulo: 'Conectá GitHub para publicar',
-        cuerpo: `<p>Tus cambios están guardados en este dispositivo. Para que los vean tus clientes, el panel los sube al repositorio de GitHub donde vive la tienda.</p>
-          <p>${A.esSuper() ? 'Configurá el acceso una sola vez en Ajustes, sección Publicación.' : 'Pedile al súper administrador un token de GitHub y cargalo en Ajustes, sección Publicación.'}</p>`,
-        pie: `<button class="btn btn-suave" data-cerrar type="button">Más tarde</button><a class="btn" href="#/ajustes/publicacion" data-cerrar>Ir a Publicación</a>`,
+  /* ---------- activar el guardado (una sola vez, el súper administrador) ---------- */
+  A.publicar = () => (GS.github.configurado() ? A.subirAhora() : A.conectarGuardado());
+  A.conectarGuardado = () => {
+    if (!A.esSuper()) {
+      A.dialogo({
+        titulo: 'Tu cuenta todavía no puede guardar',
+        cuerpo: `<p>Lo que cambiás queda solo en este dispositivo. Para que se guarde en la tienda, pedile al súper administrador que entre a <b>Cuentas</b> y te genere una contraseña nueva. Con esa contraseña tu cuenta guarda sola, sin configurar nada.</p>`,
+        pie: '<button class="btn" type="button" data-cerrar>Entendido</button>',
       });
-      return d;
+      return;
     }
+    const c = GS.github.config();
     const d = A.dialogo({
-      titulo: 'Publicar cambios',
-      cuerpo: `<p>Estos cambios van a quedar visibles para todos en la tienda:</p>${resumenCambios()}
-        <ul class="progreso" id="progreso" hidden>${PASOS.map(([k, t]) => `<li data-p="${k}">${icon('check')} <span>${t}</span></li>`).join('')}</ul>
-        <div id="pubMsg" role="status"></div>`,
-      pie: `<a class="btn btn-suave" href="./?preview=1" target="_blank" rel="noopener" id="pubPrev">${icon('eye')} Vista previa</a><button class="btn" type="button" id="pubOk">${icon('cloud')} Publicar ahora</button>`,
+      titulo: 'Activar el guardado',
+      ancho: 'min(94vw, 600px)',
+      cuerpo: `<p>La tienda guarda productos, fotos y cuentas en tu repositorio de GitHub. Para que el panel pueda escribir ahí necesita una llave de acceso (token). Se crea <b>una sola vez</b>: después, cada cambio se guarda solo y las demás cuentas no tienen que configurar nada.</p>
+        <ol class="guia">
+          <li><span>Abrí <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub, crear token</a> con tu cuenta <b>${esc(c.owner)}</b>.</span></li>
+          <li><span>Token name: <span class="codigo">Panel Ganga Store</span>. Expiration: <b>No expiration</b> o un año.</span></li>
+          <li><span>Repository access: <b>Only select repositories</b> y elegí <span class="codigo">${esc(c.repo)}</span>.</span></li>
+          <li><span>Permissions → Repository permissions → <b>Contents</b>: <b>Read and write</b>.</span></li>
+          <li><span>Tocá <b>Generate token</b>, copialo y pegalo acá abajo.</span></li>
+        </ol>
+        <label class="campo"><span>Token</span><input id="cgTok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
+        ${A.pass ? '' : '<label class="campo"><span>Tu contraseña del panel</span><input id="cgPass" type="password" autocomplete="current-password"><small>Para guardar el acceso cifrado con tu cuenta.</small></label>'}
+        <p id="cgMsg" role="status"></p>`,
+      pie: '<button class="btn btn-suave" type="button" data-cerrar>Más tarde</button><button class="btn" type="button" id="cgOk">Activar guardado</button>',
     });
-    $('#pubOk', d).onclick = async () => {
-      const btn = $('#pubOk', d);
-      btn.disabled = true;
-      const msg = $('#pubMsg', d);
+    $('#cgOk', d).onclick = async () => {
+      const tok = $('#cgTok', d).value.trim();
+      const passEl = $('#cgPass', d);
+      const pass = passEl ? passEl.value : A.pass;
+      const msg = $('#cgMsg', d);
+      if (!tok) { msg.innerHTML = '<span class="error-campo">Pegá el token.</span>'; return; }
+      const cta = A.cuenta(A.yo.id);
+      if (passEl && (await A.hashPass(pass, cta.salt, cta.iter)) !== cta.hash) { msg.innerHTML = '<span class="error-campo">La contraseña no es correcta.</span>'; return; }
+      $('#cgOk', d).disabled = true;
+      msg.textContent = 'Probando la conexión con GitHub…';
+      const anterior = GS.github.config().token;
+      GS.github.usarToken(tok, true);
       try {
-        const remota = await GS.github.revRemota();
-        if (remota && remota !== A.pub.rev) {
-          const seguir = await A.confirmar({ titulo: 'Hay una versión más nueva', texto: 'Otra persona publicó cambios después de que empezaste a editar. Si publicás ahora, tu versión reemplaza la suya. Si preferís, descartá tus cambios en Ajustes y empezá de nuevo desde la versión publicada.', ok: 'Publicar igual', peligro: true });
-          if (!seguir) { btn.disabled = false; return; }
-        }
-        $('#progreso', d).hidden = false;
-        const marcar = (paso, det) => {
-          const idx = PASOS.findIndex((p) => p[0] === paso);
-          $$('#progreso li', d).forEach((li, i) => {
-            li.className = i < idx || paso === 'listo' ? 'ok' : i === idx ? 'activo' : '';
-            if (i === idx && det) li.querySelector('span').textContent = `${PASOS[i][1]} (${det})`;
-          });
-        };
-        const r = await GS.github.publicar(A.data, A.pub, A.yo.name || A.yo.username, marcar);
-        Object.assign(GS.imgCache, r.cache);
-        await GS.idb.set('imgcache', GS.imgCache);
-        A.pub = GS.normalizar(GS.clone(r.data));
-        A.data = GS.normalizar(GS.clone(r.data));
-        A.yo = A.cuenta(A.yo.id) || A.yo;
-        await GS.idb.set('publicadoLocal', { data: r.data, at: Date.now() });
-        await GS.idb.del('borrador');
-        A.sucio = false; A.conflicto = false;
-        pintarEstadoPub();
-        msg.innerHTML = `<div class="aviso">${icon('check')}<div><b>Publicado.</b><span id="pubOnline">La tienda se está actualizando. Suele tardar uno o dos minutos.</span></div></div>`;
-        btn.remove();
-        msg.scrollIntoView({ block: 'nearest' });
-        $('#pubPrev', d).outerHTML = '<button class="btn" type="button" data-cerrar>Listo</button>';
-        GS.github.esperarOnline(r.data.rev, (ok) => {
-          const el = document.getElementById('pubOnline');
-          if (el) el.textContent = ok ? 'La tienda ya muestra los cambios.' : 'La actualización está tardando más de lo normal. Revisá la tienda en unos minutos.';
-          if (ok) { GS.idb.del('publicadoLocal'); A.toast('La tienda ya muestra los cambios publicados.'); }
-        });
-        rutear();
+        await GS.github.probar();
       } catch (e) {
-        btn.disabled = false;
-        $$('#progreso li.activo', d).forEach((li) => (li.className = 'mal'));
-        msg.innerHTML = `<div class="aviso peligro">${icon('alert')}<div><b>No se pudo publicar.</b><span>${esc(e.message)}</span><span>Tus cambios siguen guardados en este dispositivo.</span></div></div>`;
+        GS.github.usarToken(anterior, true);
+        $('#cgOk', d).disabled = false;
+        msg.innerHTML = `<span class="error-campo">${esc(e.status === 401 ? 'GitHub no aceptó ese token. Revisá que lo hayas copiado completo, desde github_pat_ hasta el final.' : e.message)}</span>`;
+        return;
       }
+      msg.textContent = 'Conectado. Guardando lo que tenías pendiente…';
+      await A.recargarDesdeGitHub();
+      A.yo = A.cuenta(A.yo.id) || A.yo;
+      A.pass = pass;
+      await A.darAcceso(A.yo, pass);
+      await A.guardar();
+      await A.subirAhora();
+      d.close();
+      const sinAcceso = A.data.accounts.filter((x) => x.active && !x.llave && x.id !== A.yo.id);
+      A.toast(sinAcceso.length ? `Guardado activado. Para que ${sinAcceso.map((x) => x.username).join(', ')} también pueda guardar, generale una contraseña nueva en Cuentas.` : 'Guardado activado. Desde ahora cada cambio se guarda solo.');
+      rutear();
     };
+    setTimeout(() => $('#cgTok', d).focus(), 50);
   };
 
   /* ---------- arranque ---------- */
@@ -395,9 +491,10 @@
     const s = leerSesion();
     const cta = s && A.cuenta(s.id);
     if (cta && cta.active) {
-      A.yo = cta;
+      await A.recargarDesdeGitHub();
+      A.yo = A.cuenta(cta.id) || cta;
       montar();
-      if (cta.mustChange) A.cambiarPassObligatorio();
+      if (A.yo.mustChange) A.cambiarPassObligatorio();
     } else pantallaIngreso();
   }
   document.addEventListener('DOMContentLoaded', iniciar);
