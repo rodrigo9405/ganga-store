@@ -1,8 +1,8 @@
 /* Datos publicados de Ganga Store. Este archivo lo actualiza el panel de administración cada vez que se guarda un cambio. */
 window.GANGA_STORE = {
  "schema": 2,
- "rev": "rmw6lugsq",
- "updatedAt": "2026-11-07T16:15:35.306Z",
+ "rev": "rmw6lza0o",
+ "updatedAt": "2026-11-07T16:19:19.800Z",
  "updatedBy": "Súper administrador",
  "settings": {
   "storeName": "Ganga Store",

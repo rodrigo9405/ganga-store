@@ -1,6 +1,6 @@
 /* Cuentas del panel de Ganga Store (contraseñas con hash PBKDF2). La tienda no carga este archivo. */
 window.GANGA_CUENTAS = {
- "rev": "rmw6lugsq",
+ "rev": "rmw6lza0o",
  "accounts": [
   {
    "id": "u-super",
@@ -33,9 +33,15 @@ window.GANGA_CUENTAS = {
    "active": true,
    "mustChange": false,
    "createdAt": "2026-11-07T16:08:19.338Z",
-   "salt": "d4648617347e6877bec5c862c9d1f3cd",
+   "salt": "157c8061d4a2c29260a2e5beca15d962",
    "iter": 150000,
-   "hash": "99871f0064ce936f3795a547b77f99039e8737cbbd5dce7108f8adb8a1c30a92"
+   "hash": "0b7076db142914ca426f25e3934a020a1cdf7ae841b2597bf9cd91f2badd59f7",
+   "llave": {
+    "s": "699c166f4fe7b336d6d7803f0c5b3d8d",
+    "iv": "db78b14cf1648f562c16d5bc",
+    "i": 200000,
+    "ct": "E5S61YBzOgT2rnEgEhkGApWMHfaJN8pMxP9gmP0A38cZ2zUhZ+mkr8jD2D4YTRQQq1nusUVeKQFMzACOly6K7WlddnW+SlEtYjZJ+2O3gnPLIs5PQQPWtAUWVs2u0DTrPahE/WsD1MzGP56Tyg=="
+   }
   }
  ]
 };
