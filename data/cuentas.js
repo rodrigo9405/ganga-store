@@ -4,27 +4,32 @@ window.GANGA_CUENTAS = {
  "accounts": [
   {
    "id": "u-super",
-   "username": "superadmin",
-   "name": "Dueño de la tienda",
+   "username": "ssadd@rdsfs.com",
+   "name": "Súper administrador",
    "role": "superadmin",
    "active": true,
-   "mustChange": true,
-   "createdAt": "2026-10-21T21:48:16.118Z",
-   "salt": "4f5424a93071427d79f14788786eadd3",
-   "hash": "819f7d316007765f6d7bf5ad578a8fee89fe0c633dc684b6b980b0ca18329494",
-   "iter": 150000
+   "mustChange": false,
+   "createdAt": "2026-11-07T16:08:19.338Z",
+   "salt": "e5914e823bf8f796f3bde31050107265",
+   "iter": 150000,
+   "hash": "6a5f03f37624edc60ba92d6c4d958d14be0a73b4652f343e461d349011cbb520",
+   "pin": {
+    "s": "28cd7432e054c885c6e54add7ee389b1",
+    "h": "199d02cff944f0a5fba10bfcbe58ff3bf42eeb6efb2239e0d908dad9f9a8aa6a",
+    "i": 150000
+   }
   },
   {
-   "id": "u-mvjzzovgabcc12",
-   "username": "admin",
+   "id": "u-admin",
+   "username": "addlucho@rdsfs.com",
    "name": "Administrador",
    "role": "admin",
    "active": true,
-   "mustChange": true,
-   "createdAt": "2026-10-22T20:32:51.628Z",
-   "salt": "5900ad43c78dfc4ce0063978136c394f",
-   "hash": "75f0505c678bda3a8f6d796cc7fce7cb17fed6b2cc4b7f67ad1d72145d5e191f",
-   "iter": 150000
+   "mustChange": false,
+   "createdAt": "2026-11-07T16:08:19.338Z",
+   "salt": "d4648617347e6877bec5c862c9d1f3cd",
+   "iter": 150000,
+   "hash": "99871f0064ce936f3795a547b77f99039e8737cbbd5dce7108f8adb8a1c30a92"
   }
  ]
 };

@@ -48,12 +48,16 @@
       return new TextDecoder().decode(pt);
     } catch (e) { return ''; }
   };
-  /* Deja a una cuenta con acceso al guardado, cifrando el token con su contraseña */
-  A.darAcceso = async (cuenta, pass) => {
+  /* El secreto de una cuenta es su contraseña, más la clave de 4 dígitos si la tiene */
+  A.secreto = (cuenta, pass, pin) => (cuenta && cuenta.pin ? `${pass}#${pin || ''}` : pass);
+  /* Deja a una cuenta con acceso al guardado, cifrando el token con su secreto */
+  A.darAcceso = async (cuenta, pass, pin) => {
     const tok = GS.github.config().token;
-    if (tok) cuenta.llave = await A.cifrar(tok, pass);
+    if (tok) cuenta.llave = await A.cifrar(tok, A.secreto(cuenta, pass, pin));
   };
+  A.verificarPin = async (cuenta, pin) => !!(cuenta && cuenta.pin) && /^\d{4}$/.test(pin) && (await A.hashPass(pin, cuenta.pin.s, cuenta.pin.i)) === cuenta.pin.h;
   A.pass = ''; // contraseña de esta sesión (solo en memoria, para cifrar el acceso si hace falta)
+  A.pin = '';  // clave de 4 dígitos de esta sesión (solo en memoria)
 
   /* ---------- datos ---------- */
   const firma = (d) => JSON.stringify(Object.assign({}, d, { rev: '', updatedAt: '', updatedBy: '' }));
@@ -73,6 +77,12 @@
   /* Junta lo guardado en GitHub con lo que haya quedado pendiente en este dispositivo */
   function aplicarBorrador() {
     const b = borradorBase;
+    if (b && b.data && (b.data.schema || 1) < (A.pub.schema || 1)) {
+      // borradores de antes del cambio de cuentas: las cuentas se toman siempre de lo guardado
+      b.data.accounts = GS.clone(A.pub.accounts);
+      b.data.schema = A.pub.schema;
+      if (b.base) { b.base.accounts = GS.clone(A.pub.accounts); b.base.schema = A.pub.schema; }
+    }
     if (b && b.data) {
       const base = b.base || null;
       A.data = base && base.rev === A.pub.rev ? GS.normalizar(GS.clone(b.data)) : GS.normalizar(GS.fusionar(base, b.data, A.pub));
@@ -230,7 +240,7 @@
       <div class="login-caja">
         <div class="login-marca"><img src="img/marca/corona.png" alt=""><h1>GANGA STORE</h1><p>Panel de administración</p></div>
         <form id="fIngreso" novalidate>
-          <label class="campo"><span>Usuario</span><input name="u" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+          <label class="campo"><span>Correo</span><input name="u" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
           <label class="campo"><span>Contraseña</span><input name="p" type="password" autocomplete="current-password" required></label>
           <label class="check"><input type="checkbox" name="r"> <span>Mantener la sesión abierta en este dispositivo</span></label>
           <p class="error" id="eIngreso" role="alert">${esc(msg || '')}</p>
@@ -244,35 +254,69 @@
       const f = A.leerForm(e.target);
       const btn = $('#fIngreso button');
       const usuario = String(f.u || '').trim().toLowerCase();
-      if (!usuario || !f.p) { $('#eIngreso').textContent = 'Completá usuario y contraseña.'; return; }
+      if (!usuario || !f.p) { $('#eIngreso').textContent = 'Completá correo y contraseña.'; return; }
       btn.disabled = true; btn.textContent = 'Verificando…';
       const cta = A.data.accounts.find((a) => a.username.toLowerCase() === usuario);
       let ok = false;
       if (cta) ok = (await A.hashPass(f.p, cta.salt, cta.iter)) === cta.hash;
       if (!ok) {
         btn.disabled = false; btn.textContent = 'Ingresar';
-        $('#eIngreso').textContent = 'Usuario o contraseña incorrectos. Si la cuenta o la contraseña se cambiaron hace menos de un minuto, esperá un momento y probá de nuevo.';
+        $('#eIngreso').textContent = 'Correo o contraseña incorrectos. Si la contraseña se cambió hace menos de un minuto, esperá un momento y probá de nuevo.';
         return;
       }
       if (!cta.active) { btn.disabled = false; btn.textContent = 'Ingresar'; $('#eIngreso').textContent = 'Esta cuenta está desactivada. Pedile acceso al súper administrador.'; return; }
       const recordar = f.r === 'on';
+      let pin = '';
+      if (cta.pin) {
+        pin = await pedirPin(cta);
+        if (pin === null) return;
+      }
+      const btnFinal = $('#fIngreso button[type=submit]');
       guardarSesion({ id: cta.id, t: Date.now() }, recordar);
       GS.visitas.excluirDispositivo(true);
       A.pass = f.p;
+      A.pin = pin;
       // El acceso al guardado viene cifrado con la contraseña: nadie tiene que configurar nada
       if (cta.llave) {
-        const tok = await A.descifrar(cta.llave, f.p);
+        const tok = await A.descifrar(cta.llave, A.secreto(cta, f.p, pin));
         if (tok) GS.github.usarToken(tok, recordar);
       }
-      btn.textContent = 'Entrando…';
+      if (btnFinal) { btnFinal.disabled = true; btnFinal.textContent = 'Entrando…'; }
       await A.recargarDesdeGitHub();
       A.yo = A.cuenta(cta.id) || cta;
       // si esta cuenta todavía no tenía el acceso cifrado y este dispositivo sí lo tiene, se lo agrega
-      if (GS.github.configurado() && !A.yo.llave) { await A.darAcceso(A.yo, f.p); await A.guardar(); }
+      if (GS.github.configurado() && !A.yo.llave) { await A.darAcceso(A.yo, f.p, pin); await A.guardar(); }
       montar();
       if (A.yo.mustChange) A.cambiarPassObligatorio();
       else if (A.esSuper() && !GS.github.configurado()) A.conectarGuardado();
     };
+  }
+
+  /* Segundo paso del ingreso: la clave extra de 4 dígitos */
+  function pedirPin(cta) {
+    return new Promise((res) => {
+      const f = $('#fIngreso');
+      f.innerHTML = `<p class="ayuda" style="font-size:15px;color:var(--ink-2)">Por seguridad, escribí tu clave extra de 4 dígitos.</p>
+        <label class="campo"><span>Clave de 4 dígitos</span><input name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.5em;font-size:22px;text-align:center"></label>
+        <p class="error" id="eIngreso" role="alert"></p>
+        <button class="btn btn-block" type="submit">Ingresar</button>
+        <button class="btn btn-suave btn-block" type="button" id="pinVolver">Volver</button>`;
+      const inp = f.elements.namedItem('pin');
+      inp.focus();
+      let intentos = 0;
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = inp.value.trim();
+        if (!/^\d{4}$/.test(v)) { $('#eIngreso').textContent = 'Escribí los 4 números.'; return; }
+        if (await A.verificarPin(cta, v)) { res(v); return; }
+        intentos++;
+        inp.value = '';
+        if (intentos >= 5) { pantallaIngreso('Demasiados intentos con la clave de 4 dígitos. Volvé a ingresar.'); res(null); return; }
+        $('#eIngreso').textContent = 'La clave de 4 dígitos no es correcta.';
+        inp.focus();
+      };
+      $('#pinVolver').onclick = () => { pantallaIngreso(); res(null); };
+    });
   }
 
   A.cambiarPassObligatorio = () => {
@@ -293,7 +337,7 @@
       $('#pnOk', d).disabled = true;
       const cta = A.cuenta(A.yo.id);
       Object.assign(cta, await A.nuevaPass(a), { mustChange: false });
-      await A.darAcceso(cta, a);
+      await A.darAcceso(cta, a, A.pin);
       A.pass = a;
       A.yo = cta;
       await A.guardar();
@@ -436,17 +480,21 @@
         </ol>
         <label class="campo"><span>Token</span><input id="cgTok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
         ${A.pass ? '' : '<label class="campo"><span>Tu contraseña del panel</span><input id="cgPass" type="password" autocomplete="current-password"><small>Para guardar el acceso cifrado con tu cuenta.</small></label>'}
+        ${A.pass || !A.yo.pin ? '' : '<label class="campo"><span>Tu clave de 4 dígitos</span><input id="cgPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>'}
         <p id="cgMsg" role="status"></p>`,
       pie: '<button class="btn btn-suave" type="button" data-cerrar>Más tarde</button><button class="btn" type="button" id="cgOk">Activar guardado</button>',
     });
     $('#cgOk', d).onclick = async () => {
       const tok = $('#cgTok', d).value.trim();
       const passEl = $('#cgPass', d);
+      const pinEl = $('#cgPin', d);
       const pass = passEl ? passEl.value : A.pass;
+      const pin = pinEl ? pinEl.value.trim() : A.pin;
       const msg = $('#cgMsg', d);
       if (!tok) { msg.innerHTML = '<span class="error-campo">Pegá el token.</span>'; return; }
       const cta = A.cuenta(A.yo.id);
       if (passEl && (await A.hashPass(pass, cta.salt, cta.iter)) !== cta.hash) { msg.innerHTML = '<span class="error-campo">La contraseña no es correcta.</span>'; return; }
+      if (pinEl && !(await A.verificarPin(cta, pin))) { msg.innerHTML = '<span class="error-campo">La clave de 4 dígitos no es correcta.</span>'; return; }
       $('#cgOk', d).disabled = true;
       msg.textContent = 'Probando la conexión con GitHub…';
       const anterior = GS.github.config().token;
@@ -463,12 +511,13 @@
       await A.recargarDesdeGitHub();
       A.yo = A.cuenta(A.yo.id) || A.yo;
       A.pass = pass;
-      await A.darAcceso(A.yo, pass);
+      A.pin = pin;
+      await A.darAcceso(A.yo, pass, pin);
       await A.guardar();
       await A.subirAhora();
       d.close();
       const sinAcceso = A.data.accounts.filter((x) => x.active && !x.llave && x.id !== A.yo.id);
-      A.toast(sinAcceso.length ? `Guardado activado. Para que ${sinAcceso.map((x) => x.username).join(', ')} también pueda guardar, generale una contraseña nueva en Cuentas.` : 'Guardado activado. Desde ahora cada cambio se guarda solo.');
+      A.toast(sinAcceso.length ? `Guardado activado. Para que ${sinAcceso.map((x) => x.username).join(', ')} también pueda guardar, cambiale la contraseña en Cuentas (podés poner la misma).` : 'Guardado activado. Desde ahora cada cambio se guarda solo.');
       rutear();
     };
     setTimeout(() => $('#cgTok', d).focus(), 50);

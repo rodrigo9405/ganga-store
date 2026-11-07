@@ -92,13 +92,15 @@
         <p class="ayuda" style="margin-top:10px">Al cargar una copia se reemplazan productos, categorías, promos y ajustes. Las cuentas no se tocan.</p>
       </section>
 
-      <section class="bloque" id="cuenta"><div class="bloque-cab"><h2>Mi cuenta</h2><p>${esc(yo.name)}, usuario ${esc(yo.username)}.</p></div>
+      <section class="bloque" id="cuenta"><div class="bloque-cab"><h2>Mi cuenta</h2><p>${esc(yo.name)}, ${esc(yo.username)}.</p></div>
         <form class="form" id="fPass" novalidate style="max-width:420px">
           <label class="campo"><span>Contraseña actual</span><input type="password" name="a" autocomplete="current-password"></label>
-          <label class="campo"><span>Contraseña nueva</span><input type="password" name="n" autocomplete="new-password"><small>Al menos 10 caracteres.</small></label>
-          <label class="campo"><span>Repetí la nueva</span><input type="password" name="r" autocomplete="new-password"></label>
+          ${yo.pin ? '<label class="campo"><span>Clave de 4 dígitos actual</span><input type="password" name="pa" inputmode="numeric" maxlength="4" autocomplete="off"></label>' : ''}
+          <label class="campo"><span>Contraseña nueva</span><input type="password" name="n" autocomplete="new-password"><small>Al menos 10 caracteres.${yo.pin ? ' Dejala vacía si solo querés cambiar la clave de 4 dígitos.' : ''}</small></label>
+          <label class="campo"><span>Repetí la contraseña nueva</span><input type="password" name="r" autocomplete="new-password"></label>
+          ${yo.pin ? '<label class="campo"><span>Clave nueva de 4 dígitos</span><input type="password" name="pn" inputmode="numeric" maxlength="4" autocomplete="off"><small>Dejala vacía para mantener la actual.</small></label>' : ''}
           <p class="error-campo" id="passErr" role="alert"></p>
-          <div><button class="btn" type="submit">Cambiar contraseña</button></div>
+          <div><button class="btn" type="submit">Guardar cambios</button></div>
         </form>
       </section>
 
@@ -196,18 +198,27 @@
       e.preventDefault();
       const f = A.leerForm(e.target);
       const cta = A.cuenta(A.yo.id);
+      const nuevaPass = f.n || '';
+      const pinNuevo = String(f.pn || '').trim();
       let err = '';
       if ((await A.hashPass(f.a || '', cta.salt, cta.iter)) !== cta.hash) err = 'La contraseña actual no es correcta.';
-      else err = A.validarPass(f.n || '') || (f.n !== f.r ? 'Las contraseñas nuevas no coinciden.' : '');
+      else if (cta.pin && !(await A.verificarPin(cta, String(f.pa || '').trim()))) err = 'La clave de 4 dígitos actual no es correcta.';
+      else if (!nuevaPass && !pinNuevo) err = cta.pin ? 'Escribí una contraseña nueva o una clave nueva de 4 dígitos.' : 'Escribí la contraseña nueva.';
+      else if (nuevaPass && (A.validarPass(nuevaPass) || (nuevaPass !== f.r ? 'Las contraseñas nuevas no coinciden.' : ''))) err = A.validarPass(nuevaPass) || 'Las contraseñas nuevas no coinciden.';
+      else if (pinNuevo && !/^\d{4}$/.test(pinNuevo)) err = 'La clave nueva tiene que tener exactamente 4 números.';
       $('#passErr').textContent = err;
       if (err) return;
-      Object.assign(cta, await A.nuevaPass(f.n), { mustChange: false });
-      await A.darAcceso(cta, f.n);
-      A.pass = f.n;
+      const passFinal = nuevaPass || f.a;
+      const pinFinal = cta.pin ? (pinNuevo || String(f.pa).trim()) : '';
+      if (nuevaPass) Object.assign(cta, await A.nuevaPass(nuevaPass), { mustChange: false });
+      if (pinNuevo) { const h = await A.nuevaPass(pinNuevo); cta.pin = { s: h.salt, h: h.hash, i: h.iter }; }
+      await A.darAcceso(cta, passFinal, pinFinal);
+      A.pass = passFinal;
+      A.pin = pinFinal;
       A.yo = cta;
       await A.guardar();
       e.target.reset();
-      A.toast('Contraseña cambiada');
+      A.toast(nuevaPass && pinNuevo ? 'Contraseña y clave de 4 dígitos cambiadas' : nuevaPass ? 'Contraseña cambiada' : 'Clave de 4 dígitos cambiada');
     };
 
     const desc = $('#descartar');

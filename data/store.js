@@ -1,6 +1,6 @@
-/* Datos publicados de Ganga Store. Este archivo lo actualiza el panel de administración al presionar "Publicar". */
+/* Datos publicados de Ganga Store. Este archivo lo actualiza el panel de administración cada vez que se guarda un cambio. */
 window.GANGA_STORE = {
- "schema": 1,
+ "schema": 2,
  "rev": "rmvin8tbq",
  "updatedAt": "2026-10-21T21:48:16.118Z",
  "updatedBy": "Instalación inicial",

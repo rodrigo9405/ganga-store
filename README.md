@@ -22,7 +22,8 @@ Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estátic
 - Datos de la tienda, redes, horarios, diseño de temporada (automático, siempre minimalista o fijo) y copia de seguridad.
 
 **Súper administrador**
-- Todo lo anterior, más las cuentas: ver cuántas hay activas, crear, editar, desactivar, cambiar contraseñas y eliminar.
+- Todo lo anterior, más las cuentas. El panel tiene **solo dos cuentas fijas** (súper administrador y administrador): no se pueden crear ni eliminar cuentas. El súper administrador puede cambiar los datos y contraseñas de las dos y desactivar la del administrador.
+- El súper administrador entra con correo, contraseña y una **clave extra de 4 dígitos**, que puede cambiar en *Ajustes → Mi cuenta*.
 
 ## Cómo funciona sin base de datos
 
@@ -30,7 +31,7 @@ Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estátic
 2. El hosting conectado al repositorio actualiza la tienda en uno o dos minutos.
 3. Si dos personas guardan a la vez, los cambios de las dos se suman. Si se corta internet, lo pendiente queda en el dispositivo y se sube solo cuando vuelve la conexión.
 
-**Activar el guardado (una sola vez).** El súper administrador crea un token de GitHub y lo pega en el panel; el panel lo pide solo la primera vez que entrás. El token se guarda **cifrado con la contraseña de cada cuenta**, así las demás cuentas guardan sin configurar nada. Las cuentas creadas antes de activar el guardado necesitan una contraseña nueva (*Cuentas → Contraseña*).
+**Activar el guardado (una sola vez).** El súper administrador crea un token de GitHub y lo pega en el panel; el panel lo pide solo la primera vez que entrás. El token se guarda **cifrado con la contraseña de cada cuenta** (en el súper administrador, contraseña más clave de 4 dígitos), así el administrador guarda sin configurar nada. Después de activar el guardado, el súper administrador tiene que volver a poner la contraseña del administrador en *Cuentas → Contraseña* (puede ser la misma) para darle acceso.
 
 Las cuentas del equipo están en `data/cuentas.js`, separadas de los datos de la tienda: la tienda nunca descarga ese archivo y se puede proteger junto con el panel.
 
@@ -54,7 +55,7 @@ Las visitas se cuentan con [Abacus](https://abacus.jasoncameron.dev), un contado
 Desde ese momento, el panel ni siquiera se abre si tu correo no está en la lista; después se pide además usuario y contraseña.
 4. Opcional: protegé también la dirección técnica `ganga-store.pages.dev` desde el proyecto de Pages (*Settings → Access policy*). Igual, quien entre por ahí con el navegador es enviado a tu dominio.
 
-**4. Primer ingreso.** Entrá a `https://tudominio.com/admin` con el usuario `superadmin` y la contraseña inicial que te pasé. Te va a pedir que la cambies y después que actives el guardado: seguí los pasos de la pantalla para crear el token (permiso *Contents: Read and write* sobre este repositorio) y pegalo. Listo: desde ahí todo se guarda solo.
+**4. Primer ingreso.** Entrá a `https://tudominio.com/admin` con el correo, la contraseña y la clave de 4 dígitos del súper administrador. Te va a pedir que actives el guardado: seguí los pasos de la pantalla para crear el token (permiso *Contents: Read and write* sobre este repositorio) y pegalo. Listo: desde ahí todo se guarda solo.
 
 ## Seguridad, en corto
 

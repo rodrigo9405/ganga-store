@@ -257,7 +257,10 @@
     location.replace('https://' + dom + '/' + (archivo && archivo !== 'index.html' ? archivo : '') + location.search + location.hash);
     return true;
   };
+  /* Solo existen estas dos cuentas del panel: no se pueden crear ni eliminar */
+  GS.CUENTAS_FIJAS = ['u-super', 'u-admin'];
   GS.normalizar = (d) => {
+    if (Array.isArray(d.accounts)) d.accounts = d.accounts.filter((a) => GS.CUENTAS_FIJAS.includes(a.id));
     d.settings = d.settings || {};
     ['categories', 'products', 'promotions', 'accounts'].forEach((k) => { if (!Array.isArray(d[k])) d[k] = []; });
     d.products.forEach((p) => { p.colors = p.colors || []; p.sizes = p.sizes || []; p.colors.forEach((c) => { c.images = c.images || []; }); });
