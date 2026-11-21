@@ -81,6 +81,13 @@
   };
   D.registrarVisita = () => rest('rpc/registrar_visita', { method: 'POST', body: '{}', keepalive: true }).catch(() => {});
 
+  /* Estado del negocio: si el súper administrador suspendió la tienda, se muestra "Página en mantenimiento" */
+  D.MSJ_SUSPENDIDA = 'La tienda está suspendida temporalmente. Comunicate con el súper administrador para reactivarla.';
+  D.estadoNegocio = async () => {
+    const r = await rest('rpc/estado_negocio', { method: 'POST', body: '{}' });
+    return r && typeof r === 'object' ? r : { activo: true };
+  };
+
   /* ---------- panel: cliente con sesión ---------- */
   const CLAVE_RECORDAR = 'gs_recordar';
   let cliente = null;
@@ -110,7 +117,10 @@
     const { data, error } = await sb.auth.signInWithPassword({ email: correo, password: pass });
     if (error) {
       const m = String(error.message || '');
-      if (/banned/i.test(m)) throw new Error('Esta cuenta está desactivada. Pedile acceso al súper administrador.');
+      if (/banned/i.test(m)) {
+        const est = await D.estadoNegocio().catch(() => null);
+        throw new Error(est && est.activo === false ? D.MSJ_SUSPENDIDA : 'Esta cuenta está desactivada. Pedile acceso al súper administrador.');
+      }
       if (/Invalid login|invalid_credentials|Email not confirmed/i.test(m)) throw new Error('Correo o contraseña incorrectos.');
       throw err(error);
     }
@@ -134,6 +144,9 @@
   D.crearPin = async (pin) => ok(await D.cliente().rpc('crear_pin', { p_pin: pin }));
   D.verificarPin = async (pin) => ok(await D.cliente().rpc('verificar_pin', { p_pin: pin }));
   D.cambiarPin = async (actual, nuevo) => ok(await D.cliente().rpc('cambiar_pin', { p_actual: actual, p_nuevo: nuevo }));
+
+  /* Suspender o reactivar la tienda (solo el súper administrador) */
+  D.cambiarEstadoNegocio = async (activo) => ok(await D.cliente().rpc('cambiar_estado_negocio', { p_activo: !!activo }), 'No se pudo cambiar el estado de la tienda');
 
   /* Contraseñas */
   D.cambiarMiContrasena = async (actual, nueva) => ok(await D.cliente().rpc('cambiar_mi_contrasena', { p_actual: actual, p_nueva: nueva }));

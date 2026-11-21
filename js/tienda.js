@@ -13,6 +13,9 @@
     $('#cerrarMenu').innerHTML = icon('close');
     $('#cabWhatsapp').innerHTML = icon('chat');
     try {
+      // Si el súper administrador suspendió la tienda, solo se muestra la página de mantenimiento
+      const estado = await GS.db.estadoNegocio();
+      if (estado && estado.activo === false) { mantenimiento(); return; }
       if (/[?&]preview/.test(location.search)) {
         const b = await GS.idb.get('borrador');
         if (b && b.data) {
@@ -44,6 +47,24 @@
     rutear();
     setInterval(tic, 1000);
     if (!preview) GS.visitas.registrar();
+  }
+
+  /* ---------- página de mantenimiento (tienda suspendida) ---------- */
+  function mantenimiento() {
+    document.title = 'Página en mantenimiento | Ganga Store';
+    document.documentElement.setAttribute('data-tema', 'minimal');
+    const robots = document.createElement('meta');
+    robots.name = 'robots'; robots.content = 'noindex';
+    document.head.appendChild(robots);
+    document.body.classList.add('en-mantenimiento');
+    ['#cinta', '.cab', '.tema-guirnalda', '#velo', '#cajon', '#pie'].forEach((sel) => { const el = $(sel); if (el) el.remove(); });
+    main.innerHTML = `<section class="mant" aria-labelledby="mantTit">
+      <img src="img/marca/corona.png" alt="" width="311" height="203">
+      <p class="marca-nombre">GANGA STORE</p>
+      <span class="regla" aria-hidden="true"><i></i></span>
+      <h1 id="mantTit">Página en mantenimiento</h1>
+      <p>Estamos haciendo mejoras en la tienda. Volvé a visitarnos pronto.</p>
+    </section>`;
   }
 
   /* ---------- utilidades de interfaz ---------- */

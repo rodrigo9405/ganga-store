@@ -270,3 +270,10 @@ dialog.dlg::backdrop { background: rgba(0,0,0,.45); }
 .guia li::before { counter-increment: g; content: counter(g) '.'; color: var(--ink-3); }
 .pass-campo { display: flex; gap: 6px; }
 .pass-campo input { flex: 1; }
+
+/* barra de tienda suspendida (solo la ve el súper administrador) */
+.aviso-negocio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; background: var(--danger); color: #fff; font-size: 14.5px; line-height: 1.4; }
+.aviso-negocio .ic { width: 20px; height: 20px; flex: none; }
+.aviso-negocio span { flex: 1 1 220px; }
+.aviso-negocio .btn { background: #fff; color: var(--danger); border-color: #fff; }
+@media (min-width: 980px) { .aviso-negocio { padding: 10px 32px; } }

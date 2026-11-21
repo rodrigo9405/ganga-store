@@ -12,7 +12,17 @@
     A.titulo('Cuentas');
     const d = A.data;
     const cs = [...d.accounts].sort((a, b) => (a.role === 'superadmin' ? -1 : b.role === 'superadmin' ? 1 : 0));
+    const activa = !A.negocio || A.negocio.activo !== false;
+    const desde = A.negocio && A.negocio.desde ? GS.fechaHora(A.negocio.desde) : '';
     A.vista().innerHTML = `
+      <section class="bloque" id="negocio"><div class="bloque-cab"><h2>Estado de la tienda</h2>
+        <p>Si hace falta (por ejemplo, por falta de pago), podés suspender la tienda temporalmente. No se borra nada: al reactivarla, todo vuelve a estar como estaba.</p></div>
+        ${activa
+          ? `<div class="aviso" style="background:#eef6f0;border-color:#b9d3c1">${icon('check')}<div><b>Activa.</b><span>Tus clientes ven la tienda y el administrador puede entrar al panel.</span></div></div>
+             <button class="btn btn-peligro" type="button" id="btnSuspender">${icon('alert')} Suspender la tienda</button>`
+          : `<div class="aviso peligro">${icon('alert')}<div><b>${desde ? 'Suspendida desde el ' + esc(desde) : 'Suspendida.'}</b><span>Tus clientes ven "Página en mantenimiento" y el administrador no puede entrar ni cambiar nada.</span></div></div>
+             <button class="btn" type="button" id="btnReactivar">${icon('check')} Reactivar la tienda</button>`}
+      </section>
       <section class="bloque"><div class="bloque-cab"><h2>Cuentas del panel</h2>
         <p>La tienda tiene solo estas dos cuentas. No se pueden crear ni eliminar: podés cambiar sus datos y contraseñas, y desactivar la del administrador.</p></div>
         <div class="lista">${cs.map((c) => {
@@ -29,6 +39,9 @@
       </section>
       <p class="ayuda" style="margin-top:12px">Los cambios se guardan al instante. Una cuenta desactivada no puede iniciar sesión hasta que la actives de nuevo.</p>`;
 
+    const bs = $('#btnSuspender'), br = $('#btnReactivar');
+    if (bs) bs.onclick = () => A.cambiarNegocio(false);
+    if (br) br.onclick = () => A.cambiarNegocio(true);
     $$('.lista .item').forEach((it) => {
       const c = d.accounts.find((x) => x.id === it.dataset.id);
       $('[data-edit]', it).onclick = () => editar(c);

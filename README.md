@@ -33,6 +33,7 @@ Todo vive en un proyecto de Supabase de la cuenta de la tienda: productos, categ
 - **El panel** inicia sesión con Supabase Auth. Cada cambio se guarda solo, al instante, y tus clientes lo ven enseguida. Si se corta internet, lo pendiente queda en el dispositivo y se guarda cuando vuelve la conexión.
 - **Cuentas:** solo dos, fijas (súper administrador y administrador). El registro de cuentas nuevas está desactivado en Supabase y el panel no permite crear ni eliminar cuentas.
 - **Clave de 4 dígitos:** el súper administrador la elige en su primer ingreso y se la pide cada vez que entra. La verifica la base de datos (5 errores bloquean 15 minutos); sin ella, la cuenta no puede modificar nada.
+- **Suspender la tienda:** en *Cuentas → Estado de la tienda*, el súper administrador puede suspenderla temporalmente (por ejemplo, por falta de pago). Los clientes ven "Página en mantenimiento", la base deja de entregar el catálogo y el administrador no puede entrar ni cambiar nada. Al reactivarla todo vuelve como estaba.
 - **Visitas:** una por cada vez que alguien abre la tienda, guardadas por día en hora de Buenos Aires.
 - **Mantener activa la base:** Supabase pausa los proyectos gratuitos tras 7 días sin uso. La tarea `.github/workflows/mantener-base-activa.yml` la consulta una vez por día.
 
@@ -42,6 +43,7 @@ Los archivos SQL de `supabase/` documentan cómo se creó la base:
 supabase/esquema.sql           tablas, reglas de seguridad, funciones y carpeta de fotos
 supabase/datos_iniciales.sql   catálogo de ejemplo, promos y ajustes
 supabase/cuentas.sql           vincula las dos cuentas de Authentication con su rol
+supabase/suspension.sql        permite al súper administrador suspender la tienda
 ```
 
 ## Puesta en marcha

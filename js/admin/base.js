@@ -227,6 +227,10 @@
     try { perfil = await DB.miPerfil(); } catch (e) { pantallaIngreso(e.message); return; }
     if (!perfil) { await DB.salir(); pantallaIngreso('Esta cuenta no tiene acceso al panel.'); return; }
     if (!perfil.active) { await DB.salir(); pantallaIngreso('Esta cuenta está desactivada. Pedile acceso al súper administrador.'); return; }
+    let negocio = { activo: true };
+    try { negocio = await DB.estadoNegocio(); } catch (e) { /* si no responde, sigue; la base igual bloquea los cambios */ }
+    if (perfil.role !== 'superadmin' && negocio.activo === false) { await DB.salir(); pantallaIngreso(DB.MSJ_SUSPENDIDA); return; }
+    A.negocio = negocio;
     if (perfil.role === 'superadmin') {
       let est;
       try { est = await DB.estadoPin(); } catch (e) { pantallaIngreso(e.message); return; }
@@ -328,6 +332,7 @@
             <h1 id="admTitulo">Panel</h1>
             <div class="guardado" id="pubEstado" role="status" aria-live="polite"></div>
           </header>
+          <div id="avisoNegocio"></div>
           <main class="adm-cont" id="vista" tabindex="-1"></main>
         </div>
       </div>
@@ -346,8 +351,16 @@
     };
     $('#vista').addEventListener('click', (e) => { if (e.target.closest('[data-reintentar]')) A.subirAhora(); });
     $('#pubEstado').addEventListener('click', (e) => { if (e.target.closest('[data-acc=reintentar]')) A.subirAhora(); });
+    $('#avisoNegocio').addEventListener('click', (e) => { if (e.target.closest('[data-reactivar]')) A.cambiarNegocio(true); });
+    pintarNegocio();
     pintarEstadoPub();
     window.onhashchange = rutear;
+    // si el súper suspende la tienda mientras el administrador tiene el panel abierto, lo saca
+    if (!A.esSuper()) document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState !== 'visible') return;
+      const est = await DB.estadoNegocio().catch(() => null);
+      if (est && est.activo === false) { await DB.salir(); pantallaIngreso(DB.MSJ_SUSPENDIDA); }
+    });
     window.onbeforeunload = (e) => {
       if ((A.guardia && A.guardia()) || A.sucio) { e.preventDefault(); e.returnValue = ''; }
     };
@@ -368,6 +381,35 @@
     if (av && A.vistas.avisoGuardado) av.innerHTML = A.vistas.avisoGuardado();
   }
   A.pintarEstadoPub = pintarEstadoPub;
+
+  /* ---------- suspender / reactivar la tienda (solo súper administrador) ---------- */
+  function pintarNegocio() {
+    const box = $('#avisoNegocio');
+    if (!box) return;
+    const suspendida = A.esSuper() && A.negocio && A.negocio.activo === false;
+    box.className = suspendida ? 'aviso-negocio' : '';
+    box.innerHTML = suspendida
+      ? `${icon('alert')}<span><b>Tienda suspendida.</b> Tus clientes ven "Página en mantenimiento" y el administrador no puede entrar.</span><button class="btn btn-chico" type="button" data-reactivar>Reactivar</button>`
+      : '';
+  }
+  A.pintarNegocio = pintarNegocio;
+  A.cambiarNegocio = async (activo) => {
+    if (!activo) {
+      const ok = await A.confirmar({
+        titulo: 'Suspender la tienda',
+        texto: 'Mientras esté suspendida:<br>• Tus clientes ven <b>"Página en mantenimiento"</b> en lugar de la tienda.<br>• El administrador no puede entrar al panel ni cambiar nada.<br>• Vos seguís entrando normalmente y la reactivás cuando quieras. No se borra nada.',
+        ok: 'Suspender la tienda', peligro: true,
+      });
+      if (!ok) return;
+    }
+    try {
+      await DB.cambiarEstadoNegocio(activo);
+      A.negocio = await DB.estadoNegocio();
+    } catch (e) { A.toast(e.message, true); return; }
+    pintarNegocio();
+    A.toast(activo ? 'Tienda reactivada: tus clientes ya la ven y el administrador puede entrar.' : 'Tienda suspendida: ahora se ve "Página en mantenimiento".');
+    rutear();
+  };
 
   /* ---------- rutas ---------- */
   let ultimo = '';
