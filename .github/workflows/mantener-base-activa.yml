@@ -1,0 +1,16 @@
+# Supabase pausa los proyectos gratuitos que pasan 7 días sin actividad.
+# Esta tarea consulta la base de datos una vez por día para que la tienda nunca se apague.
+name: Mantener la base de datos activa
+on:
+  schedule:
+    - cron: '23 14 * * *'
+  workflow_dispatch:
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar la base de datos de la tienda
+        run: |
+          curl -fsS "https://tjeaystgaqslgtgkgogw.supabase.co/rest/v1/ajustes?select=id" \
+            -H "apikey: sb_publishable_5Gj3qxjQ47cPXrdg9k87dQ_IVvuac43" > /dev/null
+          echo "Base de datos activa"

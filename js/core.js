@@ -1,6 +1,6 @@
 /* Ganga Store — núcleo compartido (tienda y panel).
-   Sin base de datos: los datos publicados viven en data/store.js dentro del repositorio
-   y los borradores del panel se guardan en el navegador (IndexedDB). */
+   Los datos viven en la base de datos (Supabase, ver js/db.js); los cambios que todavía
+   no se pudieron guardar quedan en el navegador (IndexedDB) hasta que vuelva la conexión. */
 (function () {
   'use strict';
   const GS = (window.GS = window.GS || {});
@@ -234,19 +234,6 @@
     s.onload = () => res(); s.onerror = () => rej(new Error('No se pudo cargar ' + src));
     document.head.appendChild(s);
   });
-  GS.cargarPublicado = async () => {
-    delete window.GANGA_STORE;
-    await GS.cargarScript('data/store.js?v=' + Date.now());
-    if (!window.GANGA_STORE) throw new Error('Los datos de la tienda están vacíos o dañados.');
-    return GS.clone(window.GANGA_STORE);
-  };
-  /* Las cuentas del equipo van en un archivo aparte que la tienda nunca descarga
-     (en Cloudflare se puede proteger con Access junto con el panel). */
-  GS.cargarCuentas = async () => {
-    delete window.GANGA_CUENTAS;
-    try { await GS.cargarScript('data/cuentas.js?v=' + Date.now()); } catch (e) { return null; }
-    return window.GANGA_CUENTAS && Array.isArray(window.GANGA_CUENTAS.accounts) ? GS.clone(window.GANGA_CUENTAS.accounts) : null;
-  };
   /* Si la tienda tiene dominio propio, quien entre por la dirección técnica
      (pages.dev, workers.dev o github.io) pasa al dominio de la marca. */
   GS.irADominioPropio = (settings) => {
@@ -257,13 +244,39 @@
     location.replace('https://' + dom + '/' + (archivo && archivo !== 'index.html' ? archivo : '') + location.search + location.hash);
     return true;
   };
-  /* Solo existen estas dos cuentas del panel: no se pueden crear ni eliminar */
-  GS.CUENTAS_FIJAS = ['u-super', 'u-admin'];
   GS.normalizar = (d) => {
-    if (Array.isArray(d.accounts)) d.accounts = d.accounts.filter((a) => GS.CUENTAS_FIJAS.includes(a.id));
     d.settings = d.settings || {};
     ['categories', 'products', 'promotions', 'accounts'].forEach((k) => { if (!Array.isArray(d[k])) d[k] = []; });
     d.products.forEach((p) => { p.colors = p.colors || []; p.sizes = p.sizes || []; p.colors.forEach((c) => { c.images = c.images || []; }); });
     return d;
+  };
+
+  /* Fusión: suma los cambios propios (desde `base`) sobre lo último guardado (`remoto`) sin pisar lo de otros.
+     Se usa cuando quedaron cambios pendientes en el dispositivo (por ejemplo, sin internet). */
+  const COLECCIONES = ['categories', 'products', 'promotions', 'accounts'];
+  const J = (x) => JSON.stringify(x === undefined ? null : x);
+  GS.fusionar = (base, local, remoto) => {
+    const out = GS.clone(remoto);
+    COLECCIONES.forEach((col) => {
+      const B = new Map(((base && base[col]) || []).map((x) => [x.id, x]));
+      const L = new Map((local[col] || []).map((x) => [x.id, x]));
+      const R = new Set((remoto[col] || []).map((x) => x.id));
+      let lista = (out[col] || []).slice();
+      (local[col] || []).forEach((item) => {
+        const b = B.get(item.id);
+        if (base && b && J(b) === J(item)) return;          // no lo tocaste: queda lo último guardado
+        if (col === 'accounts' && !R.has(item.id)) return;   // las cuentas no se crean desde el panel
+        const i = lista.findIndex((x) => x.id === item.id);
+        if (i >= 0) lista[i] = GS.clone(item); else lista.push(GS.clone(item));
+      });
+      if (base && col !== 'accounts') lista = lista.filter((x) => !(B.has(x.id) && !L.has(x.id))); // lo borraste vos
+      out[col] = lista;
+    });
+    const ls = local.settings || {}, bs = (base && base.settings) || {};
+    out.settings = out.settings || {};
+    new Set([...Object.keys(ls), ...Object.keys(bs)]).forEach((k) => {
+      if (!base || J(ls[k]) !== J(bs[k])) { if (k in ls) out.settings[k] = GS.clone(ls[k]); else delete out.settings[k]; }
+    });
+    return out;
   };
 })();

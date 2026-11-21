@@ -20,7 +20,7 @@
           GS.imgCache = (await GS.idb.get('imgcache')) || {};
         }
       }
-      if (!data) data = await GS.cargarPublicado();
+      if (!data) data = await GS.db.cargarTienda();
       GS.normalizar(data);
       if (!preview && GS.irADominioPropio(data.settings)) return;
     } catch (e) {
@@ -37,13 +37,13 @@
     pie();
     if (preview) {
       document.body.classList.add('con-previa');
-      const txt = temaForzado && GS.TEMAS[temaForzado] ? `Vista previa del diseño ${GS.TEMAS[temaForzado].nombre}.` : 'Estás viendo la tienda con los cambios sin publicar.';
+      const txt = temaForzado && GS.TEMAS[temaForzado] ? `Vista previa del diseño ${GS.TEMAS[temaForzado].nombre}.` : 'Estás viendo la tienda con cambios que todavía no se guardaron.';
       document.body.insertAdjacentHTML('beforeend', `<div class="previa" role="status">${esc(txt)} <a href="admin.html">Volver al panel</a></div>`);
     }
     window.addEventListener('hashchange', rutear);
     rutear();
     setInterval(tic, 1000);
-    if (!preview) GS.visitas.registrar(data.settings.counterNamespace);
+    if (!preview) GS.visitas.registrar();
   }
 
   /* ---------- utilidades de interfaz ---------- */

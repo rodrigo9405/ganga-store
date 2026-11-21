@@ -1,6 +1,6 @@
 # Ganga Store
 
-Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estático, sin base de datos ni servidor: se publica gratis en Cloudflare con dominio propio, y este repositorio privado guarda los productos, promos y ajustes.
+Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estático con base de datos en Supabase: la tienda y el panel leen y guardan todo ahí.
 
 - **Tienda:** `index.html`
 - **Panel de administración:** `admin.html` (en Cloudflare también responde en `/admin`; hay un enlace discreto al pie de la tienda)
@@ -25,63 +25,55 @@ Tienda online de **Ganga Store — Luxury clothing** (Argentina). Sitio estátic
 - Todo lo anterior, más las cuentas. El panel tiene **solo dos cuentas fijas** (súper administrador y administrador): no se pueden crear ni eliminar cuentas. El súper administrador puede cambiar los datos y contraseñas de las dos y desactivar la del administrador.
 - El súper administrador entra con correo, contraseña y una **clave extra de 4 dígitos**, que puede cambiar en *Ajustes → Mi cuenta*.
 
-## Cómo funciona sin base de datos
+## Base de datos (Supabase)
 
-1. Cada cambio que hacés en el panel **se guarda solo** en este repositorio (`data/store.js`, `data/cuentas.js` y las fotos en `img/subidas/`). Arriba a la derecha se ve "Guardando…" y después "Guardado".
-2. El hosting conectado al repositorio actualiza la tienda en uno o dos minutos.
-3. Si dos personas guardan a la vez, los cambios de las dos se suman. Si se corta internet, lo pendiente queda en el dispositivo y se sube solo cuando vuelve la conexión.
+Todo vive en un proyecto de Supabase de la cuenta de la tienda: productos, categorías, promociones, ajustes, visitas, fotos (Storage) y las dos cuentas del panel (Supabase Auth).
 
-**Activar el guardado (una sola vez).** El súper administrador crea un token de GitHub y lo pega en el panel; el panel lo pide solo la primera vez que entrás. El token se guarda **cifrado con la contraseña de cada cuenta** (en el súper administrador, contraseña más clave de 4 dígitos), así el administrador guarda sin configurar nada. Después de activar el guardado, el súper administrador tiene que volver a poner la contraseña del administrador en *Cuentas → Contraseña* (puede ser la misma) para darle acceso.
+- **La tienda** lee el catálogo directo de la base con la clave pública (`js/config.js`). Las reglas de seguridad (RLS) solo le dejan leer.
+- **El panel** inicia sesión con Supabase Auth. Cada cambio se guarda solo, al instante, y tus clientes lo ven enseguida. Si se corta internet, lo pendiente queda en el dispositivo y se guarda cuando vuelve la conexión.
+- **Cuentas:** solo dos, fijas (súper administrador y administrador). El registro de cuentas nuevas está desactivado en Supabase y el panel no permite crear ni eliminar cuentas.
+- **Clave de 4 dígitos:** el súper administrador la elige en su primer ingreso y se la pide cada vez que entra. La verifica la base de datos (5 errores bloquean 15 minutos); sin ella, la cuenta no puede modificar nada.
+- **Visitas:** una por cada vez que alguien abre la tienda, guardadas por día en hora de Buenos Aires.
+- **Mantener activa la base:** Supabase pausa los proyectos gratuitos tras 7 días sin uso. La tarea `.github/workflows/mantener-base-activa.yml` la consulta una vez por día.
 
-Las cuentas del equipo están en `data/cuentas.js`, separadas de los datos de la tienda: la tienda nunca descarga ese archivo y se puede proteger junto con el panel.
+Los archivos SQL de `supabase/` documentan cómo se creó la base:
 
-Las visitas se cuentan con [Abacus](https://abacus.jasoncameron.dev), un contador público y gratuito (una visita por sesión del navegador; las del equipo no se cuentan).
+```
+supabase/esquema.sql           tablas, reglas de seguridad, funciones y carpeta de fotos
+supabase/datos_iniciales.sql   catálogo de ejemplo, promos y ajustes
+supabase/cuentas.sql           vincula las dos cuentas de Authentication con su rol
+```
 
-## Puesta en marcha (privada, con dominio propio)
+## Puesta en marcha
 
-**1. Repositorio privado.** En GitHub: *Settings → General → Danger Zone → Change repository visibility → Make private*.
-
-**2. Dominio y hosting en Cloudflare** (gratis salvo el dominio).
-1. Creá una cuenta en [cloudflare.com](https://dash.cloudflare.com/sign-up).
-2. Comprá el dominio en *Domain Registration → Register Domains* (por ejemplo un `.com`; se paga con tarjeta internacional). Si comprás el dominio en otro lado, agregalo a Cloudflare y cambiá los servidores DNS por los que te indique.
-3. Entrá a *Workers & Pages → Create → Pages → Connect to Git*, autorizá GitHub y elegí `ganga-store`. Sin comando de compilación, carpeta de salida `/`. Tocá *Deploy*.
-4. En el proyecto, *Custom domains → Set up a custom domain* y escribí tu dominio (por ejemplo `www.tudominio.com`).
-5. En el panel de la tienda, *Ajustes → Datos de la tienda → Dominio propio*, escribí ese mismo dominio y publicá. Así, quien entre por la dirección técnica `*.pages.dev` pasa a tu dominio.
-
-**3. Proteger el panel con Cloudflare Access** (gratis hasta 50 personas).
-1. En Cloudflare, *Zero Trust → Access → Applications → Add an application → Self-hosted*.
-2. Dominio: el tuyo, ruta `admin`. Agregá otra ruta igual con `data/cuentas.js`.
-3. Política *Allow* con *Emails*: los correos de las personas del equipo. El ingreso es con un código que llega al correo (*One-time PIN*).
-Desde ese momento, el panel ni siquiera se abre si tu correo no está en la lista; después se pide además usuario y contraseña.
-4. Opcional: protegé también la dirección técnica `ganga-store.pages.dev` desde el proyecto de Pages (*Settings → Access policy*). Igual, quien entre por ahí con el navegador es enviado a tu dominio.
-
-**4. Primer ingreso.** Entrá a `https://tudominio.com/admin` con el correo, la contraseña y la clave de 4 dígitos del súper administrador. Te va a pedir que actives el guardado: seguí los pasos de la pantalla para crear el token (permiso *Contents: Read and write* sobre este repositorio) y pegalo. Listo: desde ahí todo se guarda solo.
+1. **Hosting:** la tienda es un sitio estático (GitHub Pages o Cloudflare Pages). No necesita servidor.
+2. **Cuentas:** en Supabase, *Authentication → Users → Add user → Create new user* (con *Auto Confirm User*) para los dos correos del panel. Después, ejecutá `supabase/cuentas.sql` en el *SQL Editor*.
+3. **Primer ingreso:** entrá a `admin.html` con el correo y la contraseña del súper administrador y elegí la clave de 4 dígitos.
 
 ## Seguridad, en corto
 
-- El código y los datos viven en un repositorio privado. El público solo ve la tienda.
-- El token de GitHub nunca queda legible: se guarda cifrado (AES-GCM) con la contraseña de cada cuenta, y al cerrar sesión se borra del dispositivo. Por eso las contraseñas deben tener al menos 10 caracteres.
-- Con Cloudflare Access, el panel y el archivo de cuentas quedan cerrados a los correos autorizados. Las contraseñas además se guardan con hash PBKDF2 (150.000 iteraciones).
-- Si dos personas guardan a la vez, el panel suma los cambios de las dos en vez de pisarlos.
+- La clave de `js/config.js` es la pública ("publishable"): está pensada para ir en el sitio. Lo que cada uno puede leer o cambiar lo deciden las reglas de seguridad de la base.
+- Ninguna contraseña queda en el repositorio: las maneja Supabase Auth.
+- Usá contraseñas largas: es lo que protege el panel.
 
 ## Estructura
 
 ```
 index.html          tienda
 admin.html          panel
-data/store.js       datos publicados de la tienda (lo escribe el panel)
-data/cuentas.js     cuentas del panel (no lo carga la tienda)
+js/config.js        conexión con Supabase (dirección y clave pública)
+js/db.js            lectura y guardado en la base de datos
+js/vendor/          librería oficial de Supabase (para el panel)
+supabase/           SQL de la base de datos
 _headers, robots.txt  encabezados para Cloudflare y buscadores
 css/                estilos (base, tienda, temas de temporada, panel)
 js/core.js          utilidades, hora argentina, precios y promos
 js/temas.js         calendario de fechas argentinas y decoraciones
 js/visitas.js       contador de visitas
-js/github.js        publicación en GitHub
 js/tienda.js        vista de clientes
 js/admin/           panel (ingreso, visitas, catálogo, promos, cuentas, ajustes)
 img/marca/          corona y favicon
 img/demo/           fotos de ejemplo (se pueden borrar al cargar las reales)
-img/subidas/        fotos cargadas desde el panel
 fuentes/            Bodoni Moda y Jost (licencia SIL OFL)
 ```
 

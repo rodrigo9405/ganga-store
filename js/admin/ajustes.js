@@ -10,7 +10,6 @@
   A.vistas.ajustes = (args) => {
     A.titulo('Ajustes');
     const d = A.data, s = d.settings;
-    const gh = GS.github.config();
     const hoy = GS.hoyKey();
     const anio = +hoy.slice(0, 4);
     const temaHoy = GS.temaEnFecha(hoy);
@@ -58,29 +57,16 @@
         </div>
       </section>
 
-      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Guardado automático</h2><p>Productos, fotos, cuentas y ajustes se guardan solos en tu repositorio de GitHub cada vez que hacés un cambio, y la tienda se actualiza en uno o dos minutos.</p></div>
-        ${GS.github.configurado()
-          ? `<div class="aviso" style="background:#eef6f0;border-color:#b9d3c1">${icon('check')}<div><b>Activo en este dispositivo.</b><span>Se guarda en <span class="codigo">${esc(gh.owner)}/${esc(gh.repo)}</span>.${A.ultimoGuardado ? ' Último guardado: ' + esc(GS.fechaHora(new Date(A.ultimoGuardado).toISOString())) + '.' : ''}</span></div></div>`
-          : A.vistas.avisoGuardado()}
-        ${A.esSuper() ? `<div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn ${GS.github.configurado() ? 'btn-suave' : ''}" type="button" data-conectar>${icon('key')} ${GS.github.configurado() ? 'Cambiar el token' : 'Activar el guardado'}</button>
-          </div>
-          <details style="margin-top:14px"><summary style="cursor:pointer;font-size:15px">Opciones avanzadas</summary>
-            <form class="form" id="fGh" novalidate autocomplete="off" style="margin-top:12px">
-              <div class="form-grid tres">
-                <label class="campo"><span>Usuario de GitHub</span><input name="owner" value="${esc(gh.owner)}" autocapitalize="none" spellcheck="false"></label>
-                <label class="campo"><span>Repositorio</span><input name="repo" value="${esc(gh.repo)}" autocapitalize="none" spellcheck="false"></label>
-                <label class="campo"><span>Rama</span><input name="branch" value="${esc(gh.branch)}" autocapitalize="none" spellcheck="false"></label>
-              </div>
-              <div><button class="btn btn-suave" type="submit">Guardar opciones</button></div>
-            </form></details>` : ''}
-        ${GS.github.urlTienda(s) ? `<p class="ayuda" style="margin-top:12px">Dirección pública de la tienda: <a href="${esc(GS.github.urlTienda(s))}" target="_blank" rel="noopener">${esc(GS.github.urlTienda(s))}</a></p>` : ''}
+      <section class="bloque" id="publicacion"><div class="bloque-cab"><h2>Base de datos</h2><p>Productos, fotos, promociones, ajustes, visitas y cuentas se guardan en la base de datos de la tienda (Supabase). Cada cambio se guarda solo y tus clientes lo ven al instante.</p></div>
+        ${A.estado === 'error'
+          ? A.vistas.avisoGuardado()
+          : `<div class="aviso" style="background:#eef6f0;border-color:#b9d3c1">${icon('check')}<div><b>Conectado.</b><span>${A.ultimoGuardado ? 'Último guardado: ' + esc(GS.fechaHora(new Date(A.ultimoGuardado).toISOString())) + '.' : 'Todo está al día.'}</span></div></div>`}
       </section>
 
       <section class="bloque" id="visitas"><div class="bloque-cab"><h2>Contador de visitas</h2></div>
         <div class="form">
           <label class="check"><input type="checkbox" id="noContar" ${GS.visitas.dispositivoExcluido() ? 'checked' : ''}><span>No contar mis visitas desde este dispositivo<small>Así tus propias entradas a la tienda no inflan los números.</small></span></label>
-          ${A.esSuper() ? `<p class="ayuda">Las visitas se cuentan con el servicio gratuito Abacus, con el identificador <span class="codigo">${esc(s.counterNamespace)}</span>. Si lo cambiás, el contador vuelve a cero.</p>` : ''}
+          <p class="ayuda">Se cuenta una visita por cada vez que alguien abre la tienda, y se guarda en la base de datos por día (hora de Buenos Aires).</p>
         </div>
       </section>
 
@@ -104,7 +90,7 @@
         </form>
       </section>
 
-      ${A.sucio && !GS.github.configurado() ? `<section class="bloque" id="borrador"><div class="bloque-cab"><h2>Cambios que no llegaron a la tienda</h2><p>Si te equivocaste, podés borrarlos de este dispositivo y volver a lo que está guardado en la tienda.</p></div>
+      ${A.sucio && A.estado === 'error' ? `<section class="bloque" id="borrador"><div class="bloque-cab"><h2>Cambios que no llegaron a la tienda</h2><p>Si te equivocaste, podés borrarlos de este dispositivo y volver a lo que está guardado en la tienda.</p></div>
         <button class="btn btn-peligro" type="button" id="descartar">Borrar los cambios de este dispositivo</button></section>` : ''}`;
 
     if (args[0]) { const sec = document.getElementById(args[0]); if (sec) setTimeout(() => sec.scrollIntoView({ block: 'start' }), 30); }
@@ -159,14 +145,6 @@
     };
 
     // guardado (opciones avanzadas)
-    const fgh = $('#fGh');
-    if (fgh) fgh.onsubmit = (e) => {
-      e.preventDefault();
-      const f = A.leerForm(e.target);
-      GS.github.guardarConfig({ owner: f.owner, repo: f.repo, branch: f.branch });
-      A.toast('Opciones guardadas');
-    };
-
     // visitas
     $('#noContar').onchange = (e) => { GS.visitas.excluirDispositivo(e.target.checked); A.toast(e.target.checked ? 'Tus visitas desde este dispositivo no se cuentan' : 'Tus visitas se cuentan como las de cualquier cliente'); };
 
@@ -197,33 +175,51 @@
     $('#fPass').onsubmit = async (e) => {
       e.preventDefault();
       const f = A.leerForm(e.target);
-      const cta = A.cuenta(A.yo.id);
+      const cta = A.cuenta(A.yo.id) || A.yo;
       const nuevaPass = f.n || '';
       const pinNuevo = String(f.pn || '').trim();
+      const pinActual = String(f.pa || '').trim();
       let err = '';
-      if ((await A.hashPass(f.a || '', cta.salt, cta.iter)) !== cta.hash) err = 'La contraseña actual no es correcta.';
-      else if (cta.pin && !(await A.verificarPin(cta, String(f.pa || '').trim()))) err = 'La clave de 4 dígitos actual no es correcta.';
+      if (!f.a) err = 'Escribí tu contraseña actual.';
+      else if (cta.pin && !/^\d{4}$/.test(pinActual)) err = 'Escribí tu clave de 4 dígitos actual.';
       else if (!nuevaPass && !pinNuevo) err = cta.pin ? 'Escribí una contraseña nueva o una clave nueva de 4 dígitos.' : 'Escribí la contraseña nueva.';
-      else if (nuevaPass && (A.validarPass(nuevaPass) || (nuevaPass !== f.r ? 'Las contraseñas nuevas no coinciden.' : ''))) err = A.validarPass(nuevaPass) || 'Las contraseñas nuevas no coinciden.';
+      else if (nuevaPass && A.validarPass(nuevaPass)) err = A.validarPass(nuevaPass);
+      else if (nuevaPass && nuevaPass !== f.r) err = 'Las contraseñas nuevas no coinciden.';
       else if (pinNuevo && !/^\d{4}$/.test(pinNuevo)) err = 'La clave nueva tiene que tener exactamente 4 números.';
       $('#passErr').textContent = err;
       if (err) return;
-      const passFinal = nuevaPass || f.a;
-      const pinFinal = cta.pin ? (pinNuevo || String(f.pa).trim()) : '';
-      if (nuevaPass) Object.assign(cta, await A.nuevaPass(nuevaPass), { mustChange: false });
-      if (pinNuevo) { const h = await A.nuevaPass(pinNuevo); cta.pin = { s: h.salt, h: h.hash, i: h.iter }; }
-      await A.darAcceso(cta, passFinal, pinFinal);
-      A.pass = passFinal;
-      A.pin = pinFinal;
-      A.yo = cta;
-      await A.guardar();
+      const btn = $('#fPass button[type=submit]');
+      btn.disabled = true;
+      try {
+        if (cta.pin) {
+          // la clave actual se comprueba primero (también sirve como confirmación al cambiar la contraseña)
+          const okPin = await GS.db.cambiarPin(pinActual, pinNuevo || pinActual);
+          if (!okPin) throw new Error('La clave de 4 dígitos actual no es correcta.');
+        }
+        if (nuevaPass) {
+          const okPass = await GS.db.cambiarMiContrasena(f.a, nuevaPass);
+          if (!okPass) throw new Error('La contraseña actual no es correcta.');
+        } else {
+          // solo cambia la clave: igual se confirma la contraseña actual
+          const okPass = await GS.db.cambiarMiContrasena(f.a, f.a);
+          if (!okPass) {
+            if (cta.pin && pinNuevo) await GS.db.cambiarPin(pinNuevo, pinActual).catch(() => {});
+            throw new Error('La contraseña actual no es correcta.');
+          }
+        }
+      } catch (er) {
+        btn.disabled = false;
+        $('#passErr').textContent = er.message;
+        return;
+      }
+      btn.disabled = false;
       e.target.reset();
       A.toast(nuevaPass && pinNuevo ? 'Contraseña y clave de 4 dígitos cambiadas' : nuevaPass ? 'Contraseña cambiada' : 'Clave de 4 dígitos cambiada');
     };
 
     const desc = $('#descartar');
     if (desc) desc.onclick = async () => {
-      if (!(await A.confirmar({ titulo: 'Descartar cambios', texto: 'Se borran de este dispositivo los cambios que no llegaron a la tienda, incluidas las fotos nuevas. No se puede deshacer.', ok: 'Descartar', peligro: true }))) return;
+      if (!(await A.confirmar({ titulo: 'Descartar cambios', texto: 'Se borran de este dispositivo los cambios que no se pudieron guardar, incluidas las fotos nuevas. No se puede deshacer.', ok: 'Descartar', peligro: true }))) return;
       await A.descartarBorrador();
       A.yo = A.cuenta(A.yo.id) || A.yo;
       A.toast('Listo: ves lo mismo que está guardado en la tienda');

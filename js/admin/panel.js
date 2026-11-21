@@ -11,11 +11,6 @@
 
   /* Aviso grande en el panel cuando los cambios no están llegando a la tienda */
   A.vistas.avisoGuardado = () => {
-    const sinConexion = !GS.github.configurado();
-    if (sinConexion) {
-      return `<div class="aviso peligro">${icon('alert')}<div><b>Los cambios no se están guardando en la tienda.</b><span>Lo que cambiás queda solo en este dispositivo: tus clientes no lo ven y desde otro celular o computadora no aparece.</span>
-        <div class="acciones"><button class="btn btn-chico" type="button" data-conectar>${A.esSuper() ? 'Activar el guardado' : 'Cómo lo soluciono'}</button></div></div></div>`;
-    }
     if (A.estado === 'error') {
       return `<div class="aviso peligro">${icon('alert')}<div><b>El último cambio no se pudo guardar.</b><span>${esc(A.ultimoError)}</span><div class="acciones"><button class="btn btn-chico" type="button" data-reintentar>Reintentar</button></div></div></div>`;
     }
@@ -31,11 +26,8 @@
     const tema = GS.temaActual(d.settings);
     const yo = A.cuenta(A.yo.id) || A.yo;
     const activas = GS.promosActivas(d);
-    const ns = d.settings.counterNamespace;
 
     const pasos = [
-      { ok: !yo.mustChange, t: 'Cambiar la contraseña inicial', href: '#/ajustes/cuenta' },
-      { ok: GS.github.configurado(), t: 'Activar el guardado automático', href: '' },
       { ok: !!(d.settings.instagram || d.settings.facebook || d.settings.tiktok), t: 'Cargar Instagram y demás redes', href: '#/ajustes/tienda' },
     ];
     const pendientes = pasos.filter((x) => !x.ok).length;
@@ -68,16 +60,16 @@
       modo = b.dataset.m;
       $$('.segmentos button').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
       $('#descSerie').textContent = DESC[modo];
-      cargarSerie(ns);
+      cargarSerie();
     }));
-    $('#verTabla').onclick = () => { tabla = !tabla; $('#verTabla').textContent = tabla ? 'Ver gráfico' : 'Ver como tabla'; cargarSerie(ns); };
-    cargarResumen(ns);
-    cargarSerie(ns);
+    $('#verTabla').onclick = () => { tabla = !tabla; $('#verTabla').textContent = tabla ? 'Ver gráfico' : 'Ver como tabla'; cargarSerie(); };
+    cargarResumen();
+    cargarSerie();
   };
 
-  async function cargarResumen(ns) {
+  async function cargarResumen() {
     try {
-      const r = await GS.visitas.resumen(ns);
+      const r = await GS.visitas.resumen();
       const t = $('#tiles');
       if (!t) return;
       const vals = [r.hoy, r.semana, r.mes, r.anio];
@@ -86,20 +78,20 @@
   }
 
   let ultimaSerie = null;
-  async function cargarSerie(ns) {
+  async function cargarSerie() {
     const box = $('#grafico');
     if (!box) return;
     box.classList.add('cargando-datos');
     try {
-      const puntos = await GS.visitas.serie(ns, modo);
+      const puntos = await GS.visitas.serie(modo);
       ultimaSerie = puntos;
       if (!document.body.contains(box)) return;
       box.classList.remove('cargando-datos');
       if (tabla) dibujarTabla(box, puntos); else dibujarBarras(box, puntos);
     } catch (e) {
       box.classList.remove('cargando-datos');
-      box.innerHTML = `<div class="error-datos"><p>${esc(e.message && /contador/.test(e.message) ? e.message : 'No se pudo conectar con el contador de visitas. Revisá tu conexión.')}</p><button class="btn btn-chico btn-suave" type="button" id="reintentar">${icon('refresh')} Reintentar</button></div>`;
-      $('#reintentar').onclick = () => { GS.visitas.limpiarCache(); cargarSerie(ns); cargarResumen(ns); };
+      box.innerHTML = `<div class="error-datos"><p>${esc(e.message || 'No se pudieron leer las visitas. Revisá tu conexión.')}</p><button class="btn btn-chico btn-suave" type="button" id="reintentar">${icon('refresh')} Reintentar</button></div>`;
+      $('#reintentar').onclick = () => { GS.visitas.limpiarCache(); cargarSerie(); cargarResumen(); };
     }
   }
 

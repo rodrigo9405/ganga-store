@@ -1,11 +1,9 @@
 /* Ganga Store — contador de visitas.
-   Como la tienda no tiene servidor ni base de datos, las visitas se cuentan con Abacus
-   (abacus.jasoncameron.dev), un contador público y gratuito. Cada visita suma 1 al día,
-   la semana, el mes y el año en curso (hora argentina). */
+   Cada visita suma 1 al día de hoy (hora argentina) en la base de datos.
+   El panel agrupa esos días por semana, mes y año. */
 (function () {
   'use strict';
   const GS = (window.GS = window.GS || {});
-  const API = 'https://abacus.jasoncameron.dev';
 
   function isoSemana(key) {
     const dt = GS.keyToUTC(key);
@@ -29,42 +27,35 @@
   V.excluirDispositivo = (si) => (si ? GS.ls.set('gs_no_contar', true) : GS.ls.del('gs_no_contar'));
 
   /* Suma una visita por sesión del navegador. No cuenta vistas previas ni dispositivos del equipo. */
-  V.registrar = (ns) => {
+  V.registrar = () => {
     try {
-      if (!ns || V.dispositivoExcluido() || /[?&]preview/.test(location.search)) return;
+      if (V.dispositivoExcluido() || /[?&]preview/.test(location.search)) return;
       if (sessionStorage.getItem('gs_visita')) return;
       sessionStorage.setItem('gs_visita', '1');
     } catch (e) { return; }
-    const c = claves(GS.hoyKey());
-    [c.d, c.w, c.m, c.y, 'total'].forEach((k) => {
-      fetch(`${API}/hit/${encodeURIComponent(ns)}/${k}`, { mode: 'cors', keepalive: true }).catch(() => {});
-    });
+    if (GS.db && GS.db.registrarVisita) GS.db.registrarVisita();
   };
 
-  const cache = new Map();
-  async function leer(ns, k) {
-    const ck = ns + '/' + k;
-    const c = cache.get(ck);
-    if (c && Date.now() - c.t < 60000) return c.v;
-    const r = await fetch(`${API}/get/${encodeURIComponent(ns)}/${k}`, { mode: 'cors' });
-    let v;
-    if (r.status === 404) v = 0;
-    else if (r.status === 429) throw new Error('El contador recibió demasiadas consultas seguidas. Esperá unos segundos y probá de nuevo.');
-    else if (!r.ok) throw new Error('El contador de visitas no respondió (' + r.status + ').');
-    else v = Number((await r.json()).value) || 0;
-    cache.set(ck, { v, t: Date.now() });
-    return v;
+  /* Totales por día, semana, mes y año (se piden una vez por minuto como mucho) */
+  let cache = null;
+  async function totales() {
+    if (cache && Date.now() - cache.t < 60000) return cache.mapa;
+    const hoy = GS.hoyKey();
+    const filas = await GS.db.visitasRango('2020-01-01', hoy);
+    const mapa = new Map();
+    const sumar = (k, n) => mapa.set(k, (mapa.get(k) || 0) + n);
+    filas.forEach((f) => {
+      const c = claves(String(f.dia).slice(0, 10));
+      const n = Number(f.cantidad) || 0;
+      sumar(c.d, n); sumar(c.w, n); sumar(c.m, n); sumar(c.y, n); sumar('total', n);
+    });
+    cache = { mapa, t: Date.now() };
+    return mapa;
   }
-  async function leerVarios(ns, keys) {
-    const out = new Array(keys.length);
-    let i = 0;
-    const worker = async () => { while (i < keys.length) { const j = i++; out[j] = await leer(ns, keys[j]); } };
-    await Promise.all([worker(), worker(), worker(), worker()]);
-    return out;
-  }
+  V.limpiarCache = () => { cache = null; };
 
   /* Serie para el gráfico del panel. modo: dia | semana | mes | anio */
-  V.serie = async (ns, modo) => {
+  V.serie = async (modo) => {
     const hoy = GS.hoyKey();
     const puntos = [];
     if (modo === 'dia') {
@@ -89,14 +80,13 @@
       const y = +hoy.slice(0, 4);
       for (let i = 4; i >= 0; i--) puntos.push({ clave: `y-${y - i}`, corto: String(y - i), largo: `Año ${y - i}`, actual: i === 0 });
     }
-    const valores = await leerVarios(ns, puntos.map((p) => p.clave));
-    puntos.forEach((p, i) => { p.valor = valores[i]; });
+    const mapa = await totales();
+    puntos.forEach((p) => { p.valor = mapa.get(p.clave) || 0; });
     return puntos;
   };
-  V.resumen = async (ns) => {
+  V.resumen = async () => {
     const c = claves(GS.hoyKey());
-    const [hoy, semana, mes, anio, total] = await leerVarios(ns, [c.d, c.w, c.m, c.y, 'total']);
-    return { hoy, semana, mes, anio, total };
+    const mapa = await totales();
+    return { hoy: mapa.get(c.d) || 0, semana: mapa.get(c.w) || 0, mes: mapa.get(c.m) || 0, anio: mapa.get(c.y) || 0, total: mapa.get('total') || 0 };
   };
-  V.limpiarCache = () => cache.clear();
 })();

@@ -1,28 +1,16 @@
-/* Ganga Store — panel: estado, ingreso, estructura y publicación */
+/* Ganga Store — panel: ingreso, estructura y guardado automático en la base de datos (Supabase) */
 (function () {
   'use strict';
   const GS = window.GS;
   const { esc, $, $$, icon } = GS;
   const A = (GS.A = { vistas: {} });
+  const DB = GS.db;
 
-  A.pub = null;      // versión publicada
-  A.data = null;     // copia de trabajo (borrador)
+  A.pub = null;      // lo último guardado en la base de datos
+  A.data = null;     // copia de trabajo
   A.yo = null;       // cuenta que inició sesión
   A.sucio = false;
 
-  /* ---------- contraseñas (PBKDF2-SHA256) ---------- */
-  const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
-  const deHex = (h) => new Uint8Array(h.match(/.{2}/g).map((x) => parseInt(x, 16)));
-  A.hashPass = async (pass, saltHex, iter) => {
-    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
-    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: deHex(saltHex), iterations: iter, hash: 'SHA-256' }, key, 256);
-    return hex(bits);
-  };
-  A.nuevaPass = async (pass) => {
-    const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
-    const iter = 150000;
-    return { salt, iter, hash: await A.hashPass(pass, salt, iter) };
-  };
   A.generarPass = () => {
     const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const r = crypto.getRandomValues(new Uint32Array(12));
@@ -30,86 +18,40 @@
   };
   A.validarPass = (p) => (p.length < 10 ? 'Usá al menos 10 caracteres.' : null);
 
-  /* ---------- acceso a GitHub cifrado con la contraseña de cada cuenta (AES-GCM) ---------- */
-  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
-  const deB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  async function claveDe(pass, saltHex, iter) {
-    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: deHex(saltHex), iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-  }
-  A.cifrar = async (texto, pass) => {
-    const s = hex(crypto.getRandomValues(new Uint8Array(16))), iv = crypto.getRandomValues(new Uint8Array(12)), i = 200000;
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await claveDe(pass, s, i), new TextEncoder().encode(texto));
-    return { s, iv: hex(iv), i, ct: b64(ct) };
-  };
-  A.descifrar = async (llave, pass) => {
-    try {
-      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: deHex(llave.iv) }, await claveDe(pass, llave.s, llave.i), deB64(llave.ct));
-      return new TextDecoder().decode(pt);
-    } catch (e) { return ''; }
-  };
-  /* El secreto de una cuenta es su contraseña, más la clave de 4 dígitos si la tiene */
-  A.secreto = (cuenta, pass, pin) => (cuenta && cuenta.pin ? `${pass}#${pin || ''}` : pass);
-  /* Deja a una cuenta con acceso al guardado, cifrando el token con su secreto */
-  A.darAcceso = async (cuenta, pass, pin) => {
-    const tok = GS.github.config().token;
-    if (tok) cuenta.llave = await A.cifrar(tok, A.secreto(cuenta, pass, pin));
-  };
-  A.verificarPin = async (cuenta, pin) => !!(cuenta && cuenta.pin) && /^\d{4}$/.test(pin) && (await A.hashPass(pin, cuenta.pin.s, cuenta.pin.i)) === cuenta.pin.h;
-  A.pass = ''; // contraseña de esta sesión (solo en memoria, para cifrar el acceso si hace falta)
-  A.pin = '';  // clave de 4 dígitos de esta sesión (solo en memoria)
-
   /* ---------- datos ---------- */
   const firma = (d) => JSON.stringify(Object.assign({}, d, { rev: '', updatedAt: '', updatedBy: '' }));
   A.firma = firma;
   let borradorBase = null;
   async function cargarDatos() {
-    const pub = await GS.cargarPublicado();
-    const cuentas = await GS.cargarCuentas();
-    if (cuentas) pub.accounts = cuentas;
-    A.pub = GS.normalizar(pub);
-    await GS.idb.del('publicadoLocal').catch(() => {});
+    A.pub = GS.normalizar(await DB.cargarTodo());
     GS.imgCache = (await GS.idb.get('imgcache')) || {};
     const b = await GS.idb.get('borrador');
-    borradorBase = b && b.data ? b : null;
+    // borradores de la versión anterior (sin base de datos) no se usan
+    borradorBase = b && b.data && b.db === true ? b : null;
+    if (b && !borradorBase) await GS.idb.del('borrador').catch(() => {});
     aplicarBorrador();
   }
-  /* Junta lo guardado en GitHub con lo que haya quedado pendiente en este dispositivo */
+  /* Junta lo guardado con lo que haya quedado pendiente en este dispositivo */
   function aplicarBorrador() {
     const b = borradorBase;
-    if (b && b.data && (b.data.schema || 1) < (A.pub.schema || 1)) {
-      // borradores de antes del cambio de cuentas: las cuentas se toman siempre de lo guardado
-      b.data.accounts = GS.clone(A.pub.accounts);
-      b.data.schema = A.pub.schema;
-      if (b.base) { b.base.accounts = GS.clone(A.pub.accounts); b.base.schema = A.pub.schema; }
-    }
-    if (b && b.data) {
-      const base = b.base || null;
-      A.data = base && base.rev === A.pub.rev ? GS.normalizar(GS.clone(b.data)) : GS.normalizar(GS.fusionar(base, b.data, A.pub));
-    } else A.data = GS.clone(A.pub);
+    A.data = b && b.data ? GS.normalizar(GS.fusionar(b.base || null, b.data, A.pub)) : GS.clone(A.pub);
     A.sucio = firma(A.data) !== firma(A.pub);
     if (A.yo) A.yo = A.cuenta(A.yo.id) || A.yo;
   }
-  /* Trae la última versión directo del repositorio (sin esperar al hosting) */
-  A.recargarDesdeGitHub = async () => {
-    if (!GS.github.configurado()) return false;
-    try {
-      A.pub = await GS.github.leerRemoto();
-      aplicarBorrador();
-      return true;
-    } catch (e) { A.ultimoError = e.message; return false; }
+  A.recargar = async () => {
+    try { A.pub = GS.normalizar(await DB.cargarTodo()); aplicarBorrador(); return true; } catch (e) { A.ultimoError = e.message; return false; }
   };
   async function guardarBorrador() {
     try {
-      if (A.sucio) { borradorBase = { data: A.data, base: A.pub, at: Date.now() }; await GS.idb.set('borrador', borradorBase); }
+      if (A.sucio) { borradorBase = { db: true, data: A.data, base: A.pub, at: Date.now() }; await GS.idb.set('borrador', borradorBase); }
       else { borradorBase = null; await GS.idb.del('borrador'); }
-    } catch (e) { /* sin almacenamiento local: queda en memoria hasta que se suba */ }
+    } catch (e) { /* sin almacenamiento local: queda en memoria hasta que se guarde */ }
   }
-  /* Se llama después de cada cambio: guarda en el dispositivo y sube a la tienda */
+  /* Se llama después de cada cambio: queda en el dispositivo y se guarda en la base de datos */
   A.guardar = async () => {
     A.sucio = firma(A.data) !== firma(A.pub);
     await guardarBorrador();
-    if (A.sucio) { A.estado = GS.github.configurado() ? 'pendiente' : 'sin-conexion'; programar(900); }
+    if (A.sucio) { A.estado = 'pendiente'; programar(700); }
     pintarEstadoPub();
   };
   A.descartarBorrador = async () => {
@@ -120,48 +62,52 @@
     pintarEstadoPub();
   };
 
+  function cambiarFotos(data, fn) {
+    (data.products || []).forEach((p) => (p.colors || []).forEach((c) => { c.images = (c.images || []).map(fn); }));
+    (data.promotions || []).forEach((p) => { if (p.image) p.image = fn(p.image); });
+    (data.categories || []).forEach((c) => { if (c.image) c.image = fn(c.image); });
+  }
+
   /* ---------- guardado automático ---------- */
-  A.estado = 'ok';            // ok | pendiente | guardando | error | sin-conexion
+  A.estado = 'ok';            // ok | pendiente | guardando | error
   A.ultimoError = '';
   let timer = null, enCurso = false, avisoTienda = false;
   function programar(ms) { clearTimeout(timer); timer = setTimeout(subir, ms); }
   async function subir() {
     if (enCurso || !A.yo) return;
     if (!A.sucio) { A.estado = 'ok'; pintarEstadoPub(); return; }
-    if (!GS.github.configurado()) { A.estado = 'sin-conexion'; pintarEstadoPub(); return; }
     enCurso = true;
     A.estado = 'guardando'; pintarEstadoPub();
     const enviado = GS.clone(A.data);
     const base = GS.clone(A.pub);
     try {
-      const r = await GS.github.guardar(enviado, base, (A.yo && (A.yo.name || A.yo.username)) || '');
+      const r = await DB.guardar(base, enviado);
       Object.assign(GS.imgCache, r.cache);
       try { await GS.idb.set('imgcache', GS.imgCache); } catch (e) { /* nada */ }
       A.pub = GS.normalizar(GS.clone(r.data));
-      A.data = firma(A.data) === firma(enviado) ? GS.clone(r.data) : GS.normalizar(GS.fusionar(enviado, A.data, r.data));
+      // Las pantallas abiertas usan A.data: no se reemplaza, solo se cambian (en el lugar)
+      // las fotos recién subidas por su dirección definitiva.
+      const aUrl = new Map(Object.entries(r.cache).map(([url, src]) => [src, url]));
+      if (aUrl.size) cambiarFotos(A.data, (src) => aUrl.get(src) || src);
       A.yo = A.cuenta(A.yo.id) || A.yo;
       A.sucio = firma(A.data) !== firma(A.pub);
       await guardarBorrador();
       A.estado = A.sucio ? 'pendiente' : 'ok';
       A.ultimoError = '';
       A.ultimoGuardado = Date.now();
-      if (r.fusion) {
-        A.toast('Guardado. También se sumaron cambios que otra persona hizo hace un momento.');
-        if (!A.guardia) rutear();
-      } else if (!avisoTienda) {
-        avisoTienda = true;
-        A.toast('Guardado. La tienda se actualiza en uno o dos minutos.');
-      }
+      if (!avisoTienda) { avisoTienda = true; A.toast('Guardado. Tus clientes ya lo ven en la tienda.'); }
     } catch (e) {
       A.estado = 'error';
       A.ultimoError = e.message;
       if (e.red) programar(20000);
+      if (e.sesion) { A.toast(e.message, true); setTimeout(() => A.salir(), 2500); }
     }
     enCurso = false;
     if (A.sucio && A.estado !== 'error') programar(300);
     pintarEstadoPub();
   }
   A.subirAhora = () => { clearTimeout(timer); return subir(); };
+  A.publicar = A.subirAhora;
   window.addEventListener('online', () => { if (A.sucio) programar(500); });
 
   A.esSuper = () => A.yo && A.yo.role === 'superadmin';
@@ -169,10 +115,12 @@
 
   /* ---------- utilidades de interfaz ---------- */
   A.toast = (msg, error) => {
+    const zona = $('#toasts');
+    if (!zona) return;
     const t = document.createElement('div');
     t.className = 'toast' + (error ? ' error' : '');
     t.textContent = msg;
-    $('#toasts').appendChild(t);
+    zona.appendChild(t);
     setTimeout(() => t.remove(), error ? 6000 : 3200);
   };
   A.dialogo = ({ titulo, cuerpo, pie, ancho, alCerrar }) => {
@@ -229,124 +177,121 @@
   A.guardia = null;
 
   /* ---------- sesión ---------- */
-  const SES = 'gs_sesion';
-  const leerSesion = () => { try { return JSON.parse(sessionStorage.getItem(SES) || localStorage.getItem(SES) || 'null'); } catch (e) { return null; } };
-  const guardarSesion = (s, recordar) => { try { sessionStorage.setItem(SES, JSON.stringify(s)); if (recordar) localStorage.setItem(SES, JSON.stringify(s)); } catch (e) { /* nada */ } };
-  A.salir = () => { try { sessionStorage.removeItem(SES); localStorage.removeItem(SES); } catch (e) { /* nada */ } location.hash = ''; location.reload(); };
+  A.salir = async () => {
+    await DB.salir();
+    location.hash = '';
+    location.reload();
+  };
 
-  function pantallaIngreso(msg) {
+  function cajaIngreso(contenido, msg) {
     document.body.className = '';
     document.body.innerHTML = `<main class="login">
       <div class="login-caja">
         <div class="login-marca"><img src="img/marca/corona.png" alt=""><h1>GANGA STORE</h1><p>Panel de administración</p></div>
-        <form id="fIngreso" novalidate>
-          <label class="campo"><span>Correo</span><input name="u" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-          <label class="campo"><span>Contraseña</span><input name="p" type="password" autocomplete="current-password" required></label>
-          <label class="check"><input type="checkbox" name="r"> <span>Mantener la sesión abierta en este dispositivo</span></label>
-          <p class="error" id="eIngreso" role="alert">${esc(msg || '')}</p>
-          <button class="btn btn-block" type="submit">Ingresar</button>
-        </form>
+        <form id="fIngreso" novalidate>${contenido}<p class="error" id="eIngreso" role="alert">${esc(msg || '')}</p></form>
         <p class="login-pie"><a href="./">Ir a la tienda</a></p>
       </div></main><div class="toast-zona" id="toasts" aria-live="polite"></div>`;
-    $('#fIngreso [name=u]').focus();
-    $('#fIngreso').onsubmit = async (e) => {
+    return $('#fIngreso');
+  }
+  const errorIngreso = (t) => { $('#eIngreso').textContent = t; };
+
+  function pantallaIngreso(msg) {
+    const f = cajaIngreso(`
+      <label class="campo"><span>Correo</span><input name="u" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="campo"><span>Contraseña</span><input name="p" type="password" autocomplete="current-password" required></label>
+      <label class="check"><input type="checkbox" name="r"> <span>Mantener la sesión abierta en este dispositivo</span></label>
+      <button class="btn btn-block" type="submit">Ingresar</button>`, msg);
+    f.elements.namedItem('u').focus();
+    f.onsubmit = async (e) => {
       e.preventDefault();
-      const f = A.leerForm(e.target);
-      const btn = $('#fIngreso button');
-      const usuario = String(f.u || '').trim().toLowerCase();
-      if (!usuario || !f.p) { $('#eIngreso').textContent = 'Completá correo y contraseña.'; return; }
+      const d = A.leerForm(f);
+      const btn = $('button[type=submit]', f);
+      const correo = String(d.u || '').trim().toLowerCase();
+      if (!correo || !d.p) { errorIngreso('Completá correo y contraseña.'); return; }
       btn.disabled = true; btn.textContent = 'Verificando…';
-      const cta = A.data.accounts.find((a) => a.username.toLowerCase() === usuario);
-      let ok = false;
-      if (cta) ok = (await A.hashPass(f.p, cta.salt, cta.iter)) === cta.hash;
-      if (!ok) {
+      try {
+        await DB.ingresar(correo, d.p, d.r === 'on');
+      } catch (err) {
         btn.disabled = false; btn.textContent = 'Ingresar';
-        $('#eIngreso').textContent = 'Correo o contraseña incorrectos. Si la contraseña se cambió hace menos de un minuto, esperá un momento y probá de nuevo.';
+        errorIngreso(err.message);
         return;
       }
-      if (!cta.active) { btn.disabled = false; btn.textContent = 'Ingresar'; $('#eIngreso').textContent = 'Esta cuenta está desactivada. Pedile acceso al súper administrador.'; return; }
-      const recordar = f.r === 'on';
-      let pin = '';
-      if (cta.pin) {
-        pin = await pedirPin(cta);
-        if (pin === null) return;
-      }
-      const btnFinal = $('#fIngreso button[type=submit]');
-      guardarSesion({ id: cta.id, t: Date.now() }, recordar);
       GS.visitas.excluirDispositivo(true);
-      A.pass = f.p;
-      A.pin = pin;
-      // El acceso al guardado viene cifrado con la contraseña: nadie tiene que configurar nada
-      if (cta.llave) {
-        const tok = await A.descifrar(cta.llave, A.secreto(cta, f.p, pin));
-        if (tok) GS.github.usarToken(tok, recordar);
-      }
-      if (btnFinal) { btnFinal.disabled = true; btnFinal.textContent = 'Entrando…'; }
-      await A.recargarDesdeGitHub();
-      A.yo = A.cuenta(cta.id) || cta;
-      // si esta cuenta todavía no tenía el acceso cifrado y este dispositivo sí lo tiene, se lo agrega
-      if (GS.github.configurado() && !A.yo.llave) { await A.darAcceso(A.yo, f.p, pin); await A.guardar(); }
-      montar();
-      if (A.yo.mustChange) A.cambiarPassObligatorio();
-      else if (A.esSuper() && !GS.github.configurado()) A.conectarGuardado();
+      await continuar();
     };
   }
 
-  /* Segundo paso del ingreso: la clave extra de 4 dígitos */
-  function pedirPin(cta) {
+  /* Después de iniciar sesión (o al volver con la sesión abierta) */
+  async function continuar() {
+    let perfil;
+    try { perfil = await DB.miPerfil(); } catch (e) { pantallaIngreso(e.message); return; }
+    if (!perfil) { await DB.salir(); pantallaIngreso('Esta cuenta no tiene acceso al panel.'); return; }
+    if (!perfil.active) { await DB.salir(); pantallaIngreso('Esta cuenta está desactivada. Pedile acceso al súper administrador.'); return; }
+    if (perfil.role === 'superadmin') {
+      let est;
+      try { est = await DB.estadoPin(); } catch (e) { pantallaIngreso(e.message); return; }
+      if (!est || !est.tiene) { if (!(await crearPin())) return; }
+      else if (!est.verificado) { if (!(await pedirPin(est.bloqueo))) return; }
+    }
+    try { await cargarDatos(); } catch (e) {
+      pantallaIngreso('No se pudieron cargar los datos: ' + e.message);
+      return;
+    }
+    A.yo = A.cuenta(perfil.id) || perfil;
+    montar();
+  }
+
+  const campoPin = (nombre, etiqueta) => `<label class="campo"><span>${etiqueta}</span><input name="${nombre}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.5em;font-size:22px;text-align:center"></label>`;
+  const hora = (iso) => new Intl.DateTimeFormat('es-AR', { timeZone: GS.TZ, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+
+  /* Segundo paso del súper administrador: la clave extra de 4 dígitos (la verifica la base de datos) */
+  function pedirPin(bloqueo) {
     return new Promise((res) => {
-      const f = $('#fIngreso');
-      f.innerHTML = `<p class="ayuda" style="font-size:15px;color:var(--ink-2)">Por seguridad, escribí tu clave extra de 4 dígitos.</p>
-        <label class="campo"><span>Clave de 4 dígitos</span><input name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" style="letter-spacing:.5em;font-size:22px;text-align:center"></label>
-        <p class="error" id="eIngreso" role="alert"></p>
+      const f = cajaIngreso(`<p class="ayuda" style="font-size:15px;color:var(--ink-2)">Por seguridad, escribí tu clave extra de 4 dígitos.</p>
+        ${campoPin('pin', 'Clave de 4 dígitos')}
         <button class="btn btn-block" type="submit">Ingresar</button>
-        <button class="btn btn-suave btn-block" type="button" id="pinVolver">Volver</button>`;
+        <button class="btn btn-suave btn-block" type="button" id="pinVolver">Usar otra cuenta</button>`,
+      bloqueo ? `Demasiados intentos. Probá de nuevo después de las ${hora(bloqueo)}.` : '');
       const inp = f.elements.namedItem('pin');
+      const btn = $('button[type=submit]', f);
       inp.focus();
-      let intentos = 0;
       f.onsubmit = async (e) => {
         e.preventDefault();
         const v = inp.value.trim();
-        if (!/^\d{4}$/.test(v)) { $('#eIngreso').textContent = 'Escribí los 4 números.'; return; }
-        if (await A.verificarPin(cta, v)) { res(v); return; }
-        intentos++;
-        inp.value = '';
-        if (intentos >= 5) { pantallaIngreso('Demasiados intentos con la clave de 4 dígitos. Volvé a ingresar.'); res(null); return; }
-        $('#eIngreso').textContent = 'La clave de 4 dígitos no es correcta.';
-        inp.focus();
+        if (!/^\d{4}$/.test(v)) { errorIngreso('Escribí los 4 números.'); return; }
+        btn.disabled = true;
+        let r;
+        try { r = await DB.verificarPin(v); } catch (err) { btn.disabled = false; errorIngreso(err.message); return; }
+        btn.disabled = false;
+        if (r === 'ok') { res(true); return; }
+        inp.value = ''; inp.focus();
+        if (r === 'bloqueado') { const est = await DB.estadoPin().catch(() => null); errorIngreso(`Demasiados intentos. Probá de nuevo${est && est.bloqueo ? ' después de las ' + hora(est.bloqueo) : ' en 15 minutos'}.`); }
+        else errorIngreso('La clave de 4 dígitos no es correcta.');
       };
-      $('#pinVolver').onclick = () => { pantallaIngreso(); res(null); };
+      $('#pinVolver').onclick = async () => { await DB.salir(); pantallaIngreso(); res(false); };
     });
   }
 
-  A.cambiarPassObligatorio = () => {
-    const d = A.dialogo({
-      titulo: 'Elegí tu contraseña',
-      cuerpo: `<p>Es tu primer ingreso. Cambiá la contraseña inicial por una tuya antes de seguir.</p>
-        <label class="campo"><span>Contraseña nueva</span><input type="password" id="pn1" autocomplete="new-password"><small>Al menos 10 caracteres.</small></label>
-        <label class="campo"><span>Repetila</span><input type="password" id="pn2" autocomplete="new-password"></label>
-        <p class="error-campo" id="pnErr" role="alert"></p>`,
-      pie: '<button class="btn" type="button" id="pnOk">Guardar contraseña</button>',
+  /* Primera vez: el súper administrador elige su clave de 4 dígitos */
+  function crearPin() {
+    return new Promise((res) => {
+      const f = cajaIngreso(`<p class="ayuda" style="font-size:15px;color:var(--ink-2)">Es tu primer ingreso. Elegí la clave extra de 4 dígitos que te vamos a pedir cada vez que entres.</p>
+        ${campoPin('a', 'Clave de 4 dígitos')}
+        ${campoPin('b', 'Repetila')}
+        <button class="btn btn-block" type="submit">Guardar clave y entrar</button>`);
+      f.elements.namedItem('a').focus();
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const a = f.elements.namedItem('a').value.trim(), b = f.elements.namedItem('b').value.trim();
+        if (!/^\d{4}$/.test(a)) { errorIngreso('La clave tiene que tener exactamente 4 números.'); return; }
+        if (a !== b) { errorIngreso('Las dos claves no coinciden.'); return; }
+        try {
+          if (await DB.crearPin(a)) { res(true); return; }
+          errorIngreso('No se pudo guardar la clave. Volvé a ingresar.');
+        } catch (err) { errorIngreso(err.message); }
+      };
     });
-    $('[data-cerrar]', d).remove();
-    d.addEventListener('cancel', (e) => e.preventDefault());
-    $('#pnOk', d).onclick = async () => {
-      const a = $('#pn1', d).value, b = $('#pn2', d).value;
-      const err = A.validarPass(a) || (a !== b ? 'Las contraseñas no coinciden.' : null);
-      if (err) { $('#pnErr', d).textContent = err; return; }
-      $('#pnOk', d).disabled = true;
-      const cta = A.cuenta(A.yo.id);
-      Object.assign(cta, await A.nuevaPass(a), { mustChange: false });
-      await A.darAcceso(cta, a, A.pin);
-      A.pass = a;
-      A.yo = cta;
-      await A.guardar();
-      d.close();
-      A.toast('Contraseña guardada.');
-      rutear();
-      if (A.esSuper() && !GS.github.configurado()) A.conectarGuardado();
-    };
-  };
+  }
 
   /* ---------- estructura ---------- */
   const NAV = [
@@ -396,24 +341,15 @@
     $('#admVelo').onclick = () => menu(false);
     $('#admNav').addEventListener('click', (e) => { if (e.target.closest('a')) menu(false); });
     $('#btnSalir').onclick = async () => {
-      if (A.sucio && !(await A.confirmar({ titulo: 'Cerrar sesión', texto: A.estado === 'guardando' || A.estado === 'pendiente' ? 'Todavía se están guardando cambios. Esperá unos segundos para no perderlos.' : 'Hay cambios que no se pudieron subir a la tienda. Quedan en este dispositivo y se suben la próxima vez que entres.', ok: 'Cerrar sesión igual' }))) return;
-      GS.github.olvidarToken();
+      if (A.sucio && !(await A.confirmar({ titulo: 'Cerrar sesión', texto: A.estado === 'guardando' || A.estado === 'pendiente' ? 'Todavía se están guardando cambios. Esperá unos segundos para no perderlos.' : 'Hay cambios que no se pudieron guardar. Quedan en este dispositivo y se guardan la próxima vez que entres.', ok: 'Cerrar sesión igual' }))) return;
       A.salir();
     };
-    $('#vista').addEventListener('click', (e) => {
-      if (e.target.closest('[data-conectar]')) { e.preventDefault(); A.conectarGuardado(); }
-      if (e.target.closest('[data-reintentar]')) A.subirAhora();
-    });
-    $('#pubEstado').addEventListener('click', (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      if (b.dataset.acc === 'conectar') A.conectarGuardado();
-      if (b.dataset.acc === 'reintentar') A.subirAhora();
-    });
+    $('#vista').addEventListener('click', (e) => { if (e.target.closest('[data-reintentar]')) A.subirAhora(); });
+    $('#pubEstado').addEventListener('click', (e) => { if (e.target.closest('[data-acc=reintentar]')) A.subirAhora(); });
     pintarEstadoPub();
     window.onhashchange = rutear;
     window.onbeforeunload = (e) => {
-      if ((A.guardia && A.guardia()) || (A.sucio && GS.github.configurado())) { e.preventDefault(); e.returnValue = ''; }
+      if ((A.guardia && A.guardia()) || A.sucio) { e.preventDefault(); e.returnValue = ''; }
     };
     if (A.sucio) programar(400);
     rutear();
@@ -421,12 +357,11 @@
   function pintarEstadoPub() {
     const box = $('#pubEstado');
     if (!box) return;
-    const e = A.sucio && !GS.github.configurado() ? 'sin-conexion' : A.estado;
+    const e = A.estado;
     box.dataset.estado = e;
-    if (e === 'sin-conexion') box.innerHTML = `<button class="btn btn-chico btn-peligro" type="button" data-acc="conectar" title="Los cambios quedan solo en este dispositivo">${icon('alert')} <span>Sin guardar</span></button>`;
-    else if (e === 'error') box.innerHTML = `<button class="btn btn-chico btn-peligro" type="button" data-acc="reintentar" title="${esc(A.ultimoError)}">${icon('refresh')} <span>Reintentar</span></button>`;
+    if (e === 'error') box.innerHTML = `<button class="btn btn-chico btn-peligro" type="button" data-acc="reintentar" title="${esc(A.ultimoError)}">${icon('refresh')} <span>Reintentar</span></button>`;
     else if (e === 'guardando' || e === 'pendiente') box.innerHTML = `<span class="g-txt girando">${icon('refresh')} <span>Guardando…</span></span>`;
-    else box.innerHTML = `<span class="g-txt ok" title="Todo está guardado en la tienda">${icon('check')} <span>Guardado</span></span>`;
+    else box.innerHTML = `<span class="g-txt ok" title="Todo está guardado en la base de datos">${icon('check')} <span>Guardado</span></span>`;
     const lt = $('#linkTienda');
     if (lt) lt.href = A.sucio ? './?preview=1' : './';
     const av = document.getElementById('avisoGuardado');
@@ -455,96 +390,17 @@
   A.ir = (ruta) => { location.hash = ruta; };
   A.rutear = rutear;
 
-  /* ---------- activar el guardado (una sola vez, el súper administrador) ---------- */
-  A.publicar = () => (GS.github.configurado() ? A.subirAhora() : A.conectarGuardado());
-  A.conectarGuardado = () => {
-    if (!A.esSuper()) {
-      A.dialogo({
-        titulo: 'Tu cuenta todavía no puede guardar',
-        cuerpo: `<p>Lo que cambiás queda solo en este dispositivo. Para que se guarde en la tienda, pedile al súper administrador que entre a <b>Cuentas</b> y te genere una contraseña nueva. Con esa contraseña tu cuenta guarda sola, sin configurar nada.</p>`,
-        pie: '<button class="btn" type="button" data-cerrar>Entendido</button>',
-      });
-      return;
-    }
-    const c = GS.github.config();
-    const d = A.dialogo({
-      titulo: 'Activar el guardado',
-      ancho: 'min(94vw, 600px)',
-      cuerpo: `<p>La tienda guarda productos, fotos y cuentas en tu repositorio de GitHub. Para que el panel pueda escribir ahí necesita una llave de acceso (token). Se crea <b>una sola vez</b>: después, cada cambio se guarda solo y las demás cuentas no tienen que configurar nada.</p>
-        <ol class="guia">
-          <li><span>Abrí <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub, crear token</a> con tu cuenta <b>${esc(c.owner)}</b>.</span></li>
-          <li><span>Token name: <span class="codigo">Panel Ganga Store</span>. Expiration: <b>No expiration</b> o un año.</span></li>
-          <li><span>Repository access: <b>Only select repositories</b> y elegí <span class="codigo">${esc(c.repo)}</span>.</span></li>
-          <li><span>Permissions → Repository permissions → <b>Contents</b>: <b>Read and write</b>.</span></li>
-          <li><span>Tocá <b>Generate token</b>, copialo y pegalo acá abajo.</span></li>
-        </ol>
-        <label class="campo"><span>Token</span><input id="cgTok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…"></label>
-        ${A.pass ? '' : '<label class="campo"><span>Tu contraseña del panel</span><input id="cgPass" type="password" autocomplete="current-password"><small>Para guardar el acceso cifrado con tu cuenta.</small></label>'}
-        ${A.pass || !A.yo.pin ? '' : '<label class="campo"><span>Tu clave de 4 dígitos</span><input id="cgPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>'}
-        <p id="cgMsg" role="status"></p>`,
-      pie: '<button class="btn btn-suave" type="button" data-cerrar>Más tarde</button><button class="btn" type="button" id="cgOk">Activar guardado</button>',
-    });
-    $('#cgOk', d).onclick = async () => {
-      const tok = $('#cgTok', d).value.trim();
-      const passEl = $('#cgPass', d);
-      const pinEl = $('#cgPin', d);
-      const pass = passEl ? passEl.value : A.pass;
-      const pin = pinEl ? pinEl.value.trim() : A.pin;
-      const msg = $('#cgMsg', d);
-      if (!tok) { msg.innerHTML = '<span class="error-campo">Pegá el token.</span>'; return; }
-      const cta = A.cuenta(A.yo.id);
-      if (passEl && (await A.hashPass(pass, cta.salt, cta.iter)) !== cta.hash) { msg.innerHTML = '<span class="error-campo">La contraseña no es correcta.</span>'; return; }
-      if (pinEl && !(await A.verificarPin(cta, pin))) { msg.innerHTML = '<span class="error-campo">La clave de 4 dígitos no es correcta.</span>'; return; }
-      $('#cgOk', d).disabled = true;
-      msg.textContent = 'Probando la conexión con GitHub…';
-      const anterior = GS.github.config().token;
-      GS.github.usarToken(tok, true);
-      try {
-        await GS.github.probar();
-      } catch (e) {
-        GS.github.usarToken(anterior, true);
-        $('#cgOk', d).disabled = false;
-        msg.innerHTML = `<span class="error-campo">${esc(e.status === 401 ? 'GitHub no aceptó ese token. Revisá que lo hayas copiado completo, desde github_pat_ hasta el final.' : e.message)}</span>`;
-        return;
-      }
-      msg.textContent = 'Conectado. Guardando lo que tenías pendiente…';
-      await A.recargarDesdeGitHub();
-      A.yo = A.cuenta(A.yo.id) || A.yo;
-      A.pass = pass;
-      A.pin = pin;
-      await A.darAcceso(A.yo, pass, pin);
-      await A.guardar();
-      await A.subirAhora();
-      d.close();
-      const sinAcceso = A.data.accounts.filter((x) => x.active && !x.llave && x.id !== A.yo.id);
-      A.toast(sinAcceso.length ? `Guardado activado. Para que ${sinAcceso.map((x) => x.username).join(', ')} también pueda guardar, cambiale la contraseña en Cuentas (podés poner la misma).` : 'Guardado activado. Desde ahora cada cambio se guarda solo.');
-      rutear();
-    };
-    setTimeout(() => $('#cgTok', d).focus(), 50);
-  };
-
   /* ---------- arranque ---------- */
   async function iniciar() {
     document.documentElement.setAttribute('data-tema', 'minimal');
-    try {
-      await cargarDatos();
-      if (GS.irADominioPropio(A.pub.settings)) return;
-    } catch (e) {
-      document.body.innerHTML = `<main class="login"><div class="login-caja"><div class="aviso peligro">${icon('alert')}<div><b>No se pudieron cargar los datos de la tienda.</b><span>${esc(e.message)}</span></div></div><button class="btn" onclick="location.reload()">Reintentar</button></div></main>`;
+    if (!DB.configurado() || !window.supabase) {
+      cajaIngreso('', 'No se pudo conectar con la base de datos. Revisá tu conexión y recargá la página.');
       return;
     }
-    if (!window.crypto || !crypto.subtle) {
-      pantallaIngreso('Este navegador no permite ingresar de forma segura. Abrí el panel desde la dirección https de la tienda.');
-      return;
-    }
-    const s = leerSesion();
-    const cta = s && A.cuenta(s.id);
-    if (cta && cta.active) {
-      await A.recargarDesdeGitHub();
-      A.yo = A.cuenta(cta.id) || cta;
-      montar();
-      if (A.yo.mustChange) A.cambiarPassObligatorio();
-    } else pantallaIngreso();
+    let ses = null;
+    try { ses = await DB.sesion(); } catch (e) { /* sin sesión */ }
+    if (ses) await continuar();
+    else pantallaIngreso();
   }
   document.addEventListener('DOMContentLoaded', iniciar);
 })();
